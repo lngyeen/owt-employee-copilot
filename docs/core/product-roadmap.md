@@ -36,13 +36,14 @@ graph TD
     T1b["MVP: leave + policy + Vision AI (2-3 weeks)"]
 
     T2["Milestone 2: Expand<br/><i>Read tools for all remaining modules + Slack</i>"]
-    T2a["Device Info + IT Support"]
-    T2b["Attendance Overview"]
-    T2c["Profile Lookup"]
-    T2d["Buddy Lookup"]
-    T2e["Company Regulations Q&A"]
-    T2f["Training Discovery"]
-    T2g["Slack Bot"]
+    T2a["Device Info"]
+    T2b["Device IT Support"]
+    T2c["Attendance Overview"]
+    T2d["Profile Lookup"]
+    T2e["Buddy Lookup"]
+    T2f["Company Regulations Q&A"]
+    T2g["Training Discovery"]
+    T2h["Slack Bot"]
 
     T3["Milestone 3: Workflows<br/><i>Write operations beyond leave</i>"]
     T3a["Task Manager Co-Pilot"]
@@ -54,7 +55,7 @@ graph TD
 
     T1 --> T1a & T1b
     T1 ==> T2
-    T2 --> T2a & T2b & T2c & T2d & T2e & T2f & T2g
+    T2 --> T2a & T2b & T2c & T2d & T2e & T2f & T2g & T2h
     T2 ==> T3
     T3 --> T3a
     T3 ==> T4
@@ -226,8 +227,9 @@ graph LR
 | **Profile** | — | Lookup (CV, Skills, Education, Certs) | — | Team Analytics |
 | **Training** | — | My Trainings, TOEIC | — | — |
 | **Attendance** | — | Overview (check-in/out, hours) | — | — |
-| **Leave/WFH** | Balance, History, WFH, Leave Submit, Vision AI | — | — | Notifications |
-| **Device** | — | Info Query + IT Support | — | Notifications |
+| **Leave/WFH** | Balance, History, WFH, Leave Submit, Vision AI | — | — | — |
+| **Device** | — | Info Query + IT Support | — | — |
+| **Cross-module** | — | — | — | Proactive Notifications |
 | **Buddy** | — | My Buddy, My Buddees | — | — |
 | **Tasks** | — | — | Task Manager (write) | — |
 | **Company Regs** | HR Policy Q&A | All Regulations | — | Semantic Search |

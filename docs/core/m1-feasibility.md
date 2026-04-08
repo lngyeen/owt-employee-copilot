@@ -139,15 +139,15 @@ Future milestones can add additional notification channels and features. See [pr
 | 3 | Vacation balance lookup | Read | 1 day | #1, #2a |
 | 4 | Leave history query | Read | 1 day | #1, #2a |
 | 5 | WFH history lookup | Read | 0.5 day | #1, #2a |
-| 7 | RAG pipeline (policy Q&A) | Read | 2-3 days | #1 + Step 0 |
-| 8 | Submit leave request + validation | Write | 2-3 days | #3 |
-| 8a | Mastra workflow suspend/resume + pending_workflows persistence | HITL | 1-2 days | #8, #1a |
-| 8b | Pending action restore on page reload (frontend + API endpoint) | HITL | 0.5 day | #8a, #2 |
-| 9 | Vision AI (prescription/screenshot) + PII redaction | Write | 2-3 days | #8 |
-| 9a | Image upload storage + retention cron | Infra | 0.5 day | #1b |
-| 10 | Guardrails (confirm flow, audit log, consent, rate limiting) | Safety | 1-2 days | #8a, #9 |
-| 10a | Tool retry/backoff + error handling for Employee App API | Resilience | 0.5 day | #3 |
-| 11 | Integration testing + edge case testing + demo polish | QA | 2-3 days | All |
+| 6 | RAG pipeline (policy Q&A) | Read | 2-3 days | #1 + Phase 2 |
+| 7 | Submit leave request + validation | Write | 2-3 days | #3 |
+| 7a | Mastra workflow suspend/resume + pending_workflows persistence | HITL | 1-2 days | #7, #1a |
+| 7b | Pending action restore on page reload (frontend + API endpoint) | HITL | 0.5 day | #7a, #2 |
+| 8 | Vision AI (prescription/screenshot) + PII redaction | Write | 2-3 days | #7 |
+| 8a | Image upload storage + retention cron | Infra | 0.5 day | #1b |
+| 9 | Guardrails (confirm flow, audit log, consent, rate limiting) | Safety | 1-2 days | #7a, #8 |
+| 9a | Tool retry/backoff + error handling for Employee App API | Resilience | 0.5 day | #3 |
+| 10 | Integration testing + edge case testing + demo polish | QA | 2-3 days | All |
 
 **Note:** Tasks 1a, 1b, 2a, 8a, 8b, 9a, 10a are newly identified infrastructure/integration tasks that were implicit in the original 11-task list. MVP scope is 6 core features. Estimate: **2-3 weeks** for a solo developer.
 
@@ -261,10 +261,10 @@ graph TD
 | Risk | Severity | Mitigation |
 |------|----------|-----------|
 | Mastra breaking changes | Medium | Abstraction layer + pin versions |
-| Employee App API undocumented | Medium | DevTools audit at kickoff (Step 0) |
+| Employee App API undocumented | Medium | DevTools audit at kickoff (Phase 1 (Discovery)) |
 | Employee App API missing endpoints | Low-Medium | Create new endpoints in NestJS if needed |
 | AI submits wrong leave request | Medium | Human-in-the-loop + balance re-fetch + audit log |
-| Policy data messy for RAG | Medium | Step 0 cleanup first |
+| Policy data messy for RAG | Medium | Phase 1 (Discovery) cleanup first |
 | CopilotKit conflicts with Employee App React | Low | Test embed early, fallback to Vercel AI SDK |
 | CORS issues between Mastra and Employee App | Low | Add Mastra origin to NestJS CORS config |
 
@@ -288,7 +288,7 @@ graph TD
    - What claims does the JWT contain? (Open jwt.io, paste token, check payload for `sub`, `userId`, `role`)
    - Is signing symmetric (HS256) or asymmetric (RS256)? (Check JWT header `alg` field)
    - Is there a refresh token mechanism? (Check for `/api/auth/refresh` or similar in Network tab)
-   - **Set `AUTH_MODE` in .env based on findings.** See [m1-prd.md](m1-prd.md) Step 0 Decision Matrix for all scenarios.
+   - **Set `AUTH_MODE` in .env based on findings.** See [m1-prd.md](m1-prd.md) Phase 1 (Discovery) Decision Matrix for all scenarios.
 
 3. **Frontend stack** — check DevTools > Sources or `package.json`:
    - State management: React Context? Redux? Zustand? (Search for `Provider`, `createStore`, `create`)
@@ -302,26 +302,22 @@ graph TD
    - Holidays
    - Approval flow
 
-5. **Employee App frontend repo access** — to add CopilotKit widget (3-5 lines of code)
-
-6. **Deployment environment** — verify on target server:
+5. **Deployment environment** — verify on target server:
    - Is Docker installed? (`docker --version`)
    - Is there an existing reverse proxy? (`nginx -v` or `apache2 -v` or check CloudFlare)
    - Are ports 3001, 5432, 6379 available? (`lsof -i :3001`)
    - Is SSL/TLS configured? (Check if `https://employee.openwt.vn` works)
    - Is the Employee App database PostgreSQL? (`psql --version` or check docker-compose)
 
-5. **CORS config access** — to allow Mastra backend origin in NestJS (if needed)
-
 ### Blockers — Must confirm with admin/devops BEFORE starting:
 
 These are the only items that can completely block the project. No technical fallback exists if access is denied.
 
-- [ ] **Employee App frontend repo access** — to add CopilotKit widget (3-5 lines of code). Without this, cannot embed the chat widget at all
-- [ ] **Employee App backend repo access** — needed if existing API endpoints are missing or need CORS config. Without this, cannot create new endpoints
-- [ ] **Server/machine to run Docker Compose** — any Linux/Mac on OpenWT network with Docker installed. Without this, cannot deploy the AI service
+- [ ] **Employee App frontend repo access** — to add CopilotKit widget (3-5 lines of code)
+- [ ] **Employee App backend repo access** — needed if existing API endpoints are missing or need CORS config
+- [ ] **Server/machine to run Docker Compose** — any Linux/Mac on OpenWT network with Docker installed
 
-If all 3 are confirmed → no remaining blockers. All other risks have documented fallbacks.
+If all 3 are confirmed → no remaining blockers.
 
 ---
 

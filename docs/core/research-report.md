@@ -1911,7 +1911,7 @@ graph TB
 - Structured markdown files serve directly as RAG ingestion source
 - **Why:** Council (Skeptic + Pragmatist) flagged this as the real bottleneck. AI will give confidently wrong answers if policy data is contradictory
 
-### Phase 1: Full MVP — Read + Write (2-3 weeks)
+### Milestone 1: Full MVP — Read + Write (2-3 weeks)
 - Set up Mastra + Hono + PostgreSQL + Redis (Docker Compose)
 - **Mastra abstraction layer** — wrap agent/tool APIs to enable swapping to Claude SDK if needed
 - **Read tools:** `getVacationBalance`, `getVacationHistory`, `getWFHHistory` (Device tools moved to Milestone 2)
@@ -2511,25 +2511,7 @@ sequenceDiagram
 | Orphaned workflows | Cron job | TTL expiry (12h default), state → EXPIRED |
 | Session timeout | Auth layer | Refresh token before resume, preserve workflow state |
 
-**Required infrastructure:**
-
-```sql
--- pending_workflows table
-CREATE TABLE pending_workflows (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workflow_id TEXT NOT NULL UNIQUE,
-  user_id TEXT NOT NULL,
-  state TEXT NOT NULL DEFAULT 'SUSPENDED',  -- SUSPENDED | COMPLETED | CANCELLED | EXPIRED
-  action_type TEXT NOT NULL,                 -- 'leave_request' | 'expense_report' | etc.
-  payload JSONB NOT NULL,                    -- { date, type, balance, reason, ... }
-  idempotency_key TEXT UNIQUE,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  expires_at TIMESTAMPTZ DEFAULT NOW() + INTERVAL '12 hours',
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_pending_user_state ON pending_workflows (user_id, state);
-```
+**Required infrastructure:** See Section 7 `init-db.sql` for the full `pending_workflows` table DDL and indexes.
 
 This pattern applies to all "Careful" AI Readiness features in the [product-roadmap.md](product-roadmap.md) Feature Matrix — any write operation that requires human confirmation before execution.
 

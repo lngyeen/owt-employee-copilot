@@ -43,9 +43,9 @@ We believe an AI chat assistant integrated into the Employee App will let employ
 
 **Resolved:**
 - [x] ~~Do we have access to modify Employee App frontend code?~~ **Yes.** Option A — embed CopilotKit directly into Employee App React source. Widget shares auth context.
-- [x] ~~Phase 2 auth design?~~ **Service account with user context** — AI uses own credential + `X-On-Behalf-Of: userId` + endpoint allowlist. See Decisions Log section below (Decision 5).
+- [x] ~~Milestone 2 auth design?~~ **Service account with user context** — see Decisions Log (Decision 5).
 
-**To resolve during Step 0 / Phase 1 kickoff (requires browser DevTools):**
+**To resolve during Phase 1 (Discovery) — requires browser DevTools:**
 - [ ] What are the exact Employee App API endpoints? (REST or GraphQL?)
 - [ ] What authentication mechanism does the Employee App use (JWT, session cookies, OAuth)?
 - [ ] Where is the token stored? (localStorage, sessionStorage, HttpOnly cookie?)
@@ -67,9 +67,9 @@ We believe an AI chat assistant integrated into the Employee App will let employ
 - [ ] Can CopilotKit widget embed into the existing Employee App React frontend without conflicts?
 - [ ] Where to store uploaded images (local disk, S3-compatible, or PostgreSQL bytea)? What retention policy?
 
-### Step 0 Decision Matrix — Solutions Per Scenario
+### Phase 1 (Discovery) Decision Matrix — Solutions Per Scenario
 
-Every integration point has multiple possible scenarios. Step 0 must identify which scenario is real, then follow the corresponding solution path. See [research-report.md](research-report.md) §7.1 for implementation code per scenario.
+Every integration point has multiple possible scenarios. Phase 1 (Discovery) must identify which scenario is real, then follow the corresponding solution path. See [research-report.md](research-report.md) §7.1 for implementation code per scenario.
 
 #### Auth Mechanism
 
@@ -108,7 +108,7 @@ Every integration point has multiple possible scenarios. Step 0 must identify wh
 | **GraphQL** | Replace all tools with GraphQL queries: `fetch(url, { body: JSON.stringify({ query, variables }) })` | +2-3 days (rewrite all 7 tools) |
 | **Mixed (REST + GraphQL)** | Some tools use REST, some use GraphQL | +1-2 days |
 
-**Detection:** In Step 0 DevTools audit, check Network tab. If requests go to a single `/graphql` endpoint with POST body, it's GraphQL. If multiple `/api/*` endpoints with different HTTP methods, it's REST.
+**Detection:** In Phase 1 (Discovery) DevTools audit, check Network tab. If requests go to a single `/graphql` endpoint with POST body, it's GraphQL. If multiple `/api/*` endpoints with different HTTP methods, it's REST.
 
 #### CSRF
 
@@ -425,17 +425,7 @@ graph TD
 - **Implementation details:** Tool Zod schemas ([research-report.md](research-report.md) Section 7), system prompt template (Section 9), CopilotKit integration patterns (Section 2), observability with Langfuse (Section 10)
 - **Foundational concepts:** Agent memory, RAG, guardrails, HITL patterns — see [ai-agent-fundamentals.md](ai-agent-fundamentals.md)
 
-**JWT Handoff (CopilotKit → Mastra)**
-- CopilotKit widget runs inside Employee App React — it has access to the same auth context (JWT in localStorage or cookie)
-- Widget passes JWT to Mastra via CopilotKit's `headers` config: `headers: { Authorization: \`Bearer \${getToken()}\` }`
-- Mastra validates JWT signature on every request (not just trusting the token blindly)
-- Mastra extracts `userId` and `role` from JWT claims — never from user chat input
-- If JWT is expired, Mastra returns 401 → CopilotKit triggers token refresh via Employee App's existing refresh mechanism → retries the request
-- See [research-report.md](research-report.md) Section 7.1 for implementation code
-
-**CSRF Handling**
-- If NestJS enforces CSRF on state-changing endpoints: Mastra service-to-service calls bypass CSRF by using `Authorization: Bearer` header (CSRF protection typically exempts API requests with Bearer tokens). Verify during Step 0 API audit
-- If NestJS uses session-based CSRF: Mastra must obtain a CSRF token via a GET request first, then include it in POST headers. Add CSRF token fetch to tool initialization
+**Auth & CSRF** — See [Decision Matrix](#phase-1-discovery-decision-matrix--solutions-per-scenario) for all auth scenarios (JWT/cookie/session/OAuth) and CSRF handling. Implementation code in [research-report.md](research-report.md) Section 3.
 
 **Image Storage (Vision AI)**
 - Uploaded images stored in local Docker volume (`/data/uploads/`) with UUID filenames
@@ -468,13 +458,13 @@ graph TD
 |------|------------|------------|
 | Mastra breaking changes (v1.3, volatile) | Medium | Abstraction layer, pin versions, test upgrades in CI |
 | CopilotKit conflicts with existing React app | Low | Test embedding early in Phase 1, fallback to Vercel AI SDK |
-| Employee App API undocumented / changes | Medium | Map APIs via DevTools first (Step 0), build resilient error handling |
-| HR policy data too messy for RAG | Medium | Step 0 policy cleanup, manual curation before ingestion |
+| Employee App API undocumented / changes | Medium | Map APIs via DevTools first (Phase 1 (Discovery)), build resilient error handling |
+| HR policy data too messy for RAG | Medium | Phase 1 (Discovery) policy cleanup, manual curation before ingestion |
 | Dependency diamond (Mastra + CopilotKit release sync) | Low | Pin both versions, upgrade only when tested together |
 | PDPD compliance for medical docs | Medium | Consent popup, PII redaction, audit trail. Image upload is optional. Full PDPD review before Phase 2. See Decisions Log section (Decision 3) |
 | AI submits wrong leave request | Medium | Human-in-the-loop confirmation, balance re-fetch before submit, audit log for rollback |
 | **Mastra workflow + CopilotKit suspend/resume untested** | **High** | **This exact integration pattern (Mastra suspend → CopilotKit card → resume) is not documented by either framework. MUST prototype in Week 1 before building on top. Fallback: implement confirmation via chat text (Yes/No) instead of UI card** |
-| CopilotKit `onError` API unverified | Medium | Verify CopilotKit exposes HTTP status in error callbacks during Step 0. Fallback: custom fetch wrapper around CopilotKit's runtime URL |
+| CopilotKit `onError` API unverified | Medium | Verify CopilotKit exposes HTTP status in error callbacks during Phase 1 (Discovery). Fallback: custom fetch wrapper around CopilotKit's runtime URL |
 | JWT shared signing secret (symmetric) | Medium | Phase 1: accept risk (internal tool, ~200 users). Phase 2: migrate to RS256 asymmetric (Mastra holds public key only). See Security Notes below |
 
 **Security Notes (Phase 1)**
@@ -510,7 +500,7 @@ These security considerations are documented for awareness. Phase 1 is an intern
 - **Goal**: Determine exactly how the Employee App works — eliminate all assumptions
 - **How**: Open browser DevTools → Network tab, Application tab, Sources tab
 - **Output**: Set `.env` config (AUTH_MODE, API_FORMAT, JWT claims, etc.)
-- **Checklist**: See [Step 0 Decision Matrix](#step-0-decision-matrix--solutions-per-scenario) above for all scenarios
+- **Checklist**: See [Phase 1 (Discovery) Decision Matrix](#step-0-decision-matrix--solutions-per-scenario) above for all scenarios
 
 ### Phase 2: Knowledge Base (1-2 days)
 
@@ -567,7 +557,6 @@ If all 3 are confirmed → no remaining blockers. All other risks have documente
 
 ## Decisions Log
 
-*Originally debated by 4 voices: Architect, Skeptic, Pragmatist, Critic (2026-04-06)*
 
 ### Decision Summary
 
@@ -613,7 +602,7 @@ If all 3 are confirmed → no remaining blockers. All other risks have documente
 ### Critical Action Items
 
 **Before coding:**
-1. Step 0: Policy KB Cleanup — export from employee.openwt.vn/wiki, normalize to markdown with metadata
+1. Phase 1 (Discovery): Policy KB Cleanup — export from employee.openwt.vn/wiki, normalize to markdown with metadata
 
 **During Phase 1:**
 2. Mastra Abstraction Layer — wrap APIs for Claude SDK fallback
