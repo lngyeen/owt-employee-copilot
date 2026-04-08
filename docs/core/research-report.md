@@ -12,6 +12,27 @@ The **Vacation Co-Pilot** idea is well-validated by the market — commercial HR
 
 ---
 
+## Table of Contents
+
+1. [Mastra Framework Assessment](#1-mastra-framework-assessment)
+2. [CopilotKit Assessment](#2-copilotkit-assessment)
+3. [CopilotKit Implementation Patterns](#3-copilotkit-implementation-patterns)
+4. [RAG Strategy for HR Policy Q&A](#4-rag-strategy-for-hr-policy-qa)
+5. [Vision AI for Documents](#5-vision-ai-for-documents)
+6. [Deployment & Cost](#6-deployment--cost)
+7. [Docker & Infrastructure](#7-docker--infrastructure)
+8. [Caching & Data Freshness](#8-caching--data-freshness)
+9. [Memory Management](#9-memory-management)
+10. [Market Validation & UX Patterns](#10-market-validation--ux-patterns)
+11. [Technical Architecture](#11-technical-architecture)
+12. [Recommended Phase Plan](#12-recommended-phase-plan)
+13. [Guardrails & Safety](#13-guardrails--safety)
+14. [Testing & Evaluation](#14-testing--evaluation)
+
+[Appendix A: Advanced RAG Techniques](#appendix-a-advanced-rag-techniques)
+
+---
+
 ## 1. Mastra Framework Assessment
 
 ### Verdict: Strong choice, but NestJS integration is problematic
@@ -35,7 +56,7 @@ Sources: [Mastra Docs](https://mastra.ai/docs), [NestJS Issue #5081](https://git
 
 ---
 
-## 2. CopilotKit + Agentic UI
+## 2. CopilotKit Assessment
 
 ### Verdict: Perfect fit — has official Mastra integration
 
@@ -55,7 +76,9 @@ Sources: [Mastra Docs](https://mastra.ai/docs), [NestJS Issue #5081](https://git
 
 Sources: [CopilotKit](https://copilotkit.ai), [Mastra + CopilotKit](https://mastra.ai/docs/frameworks/agentic-uis/copilotkit)
 
-### CopilotKit Implementation Patterns
+---
+
+## 3. CopilotKit Implementation Patterns
 
 #### 1. `useCopilotAction` — Agent-triggered frontend actions
 
@@ -188,7 +211,7 @@ app.post("/copilotkit", async (c) => {
 });
 ```
 
-### 2.1. JWT Handoff: CopilotKit → Mastra
+### 3.1. JWT Handoff: CopilotKit → Mastra
 
 The CopilotKit widget runs inside the Employee App React tree — it has access to the same auth context. The JWT is passed to Mastra via CopilotKit's `headers` config.
 
@@ -411,7 +434,7 @@ sequenceDiagram
 
 The fresh JWT is sent with the resume request. Mastra verifies that the `userId` in the new JWT matches the `userId` that created the workflow — preventing token swap attacks.
 
-### 2.2. Pending Actions Endpoint
+### 3.2. Pending Actions Endpoint
 
 Owned by Mastra (not NestJS). Called by frontend on page load to restore pending confirmation cards.
 
@@ -452,7 +475,7 @@ useEffect(() => {
 
 ---
 
-## 3. RAG Strategy for HR Policy Q&A
+## 4. RAG Strategy for HR Policy Q&A
 
 ### How RAG works
 
@@ -536,190 +559,9 @@ sequenceDiagram
 
 **Safeguard:** System prompt limits to 3 search attempts per question. If still not found, the agent says "I don't have that information, please contact HR directly."
 
-### Advanced RAG Techniques (for scaling beyond MVP)
+### Advanced RAG Techniques
 
-The following techniques are NOT needed for OpenWT's ~10-50 pages of HR policy docs, but are documented here as reference for when document volume grows or retrieval accuracy needs improvement.
-
-#### 1. Hybrid Search (Vector + Keyword)
-
-Vector search finds semantically similar text but can miss exact terms. Keyword search finds exact matches but misses synonyms. Combining both gives best results.
-
-```mermaid
-graph LR
-    Q["User query"] --> V["Vector Search<br/>(semantic similarity)"]
-    Q --> K["Keyword Search<br/>(BM25 exact match)"]
-    V --> Merge["Merge & Score<br/>0.7 * vector + 0.3 * keyword"]
-    K --> Merge
-    Merge --> Top5["Top 5 results"]
-
-    style V fill:#e3f2fd,stroke:#2196f3
-    style K fill:#fff3e0,stroke:#ff9800
-    style Merge fill:#e8f5e9,stroke:#4caf50
-```
-
-```typescript
-// pgvector supports hybrid search natively
-const results = await rag.search(query, {
-  mode: "hybrid",              // vector + keyword
-  vectorWeight: 0.7,
-  keywordWeight: 0.3,
-  topK: 10,
-});
-```
-
-**When to use:** When users ask questions using specific policy terms (e.g., "Article 5.2" or "probation period") that vector search might rank low but keyword search catches exactly.
-
-#### 2. Hierarchical Index (Summary → Section → Detail)
-
-Instead of searching all chunks equally, build a 3-level index like a table of contents:
-
-```mermaid
-graph TD
-    subgraph Level1["Level 1: Document Summaries"]
-        D1["leave-policy.md: Covers annual leave,<br/>sick leave, carryover rules, and approval flow"]
-        D2["wfh-policy.md: Covers WFH eligibility,<br/>frequency limits, and request process"]
-    end
-
-    subgraph Level2["Level 2: Section Summaries"]
-        S1["Section 3: Carryover rules<br/>— max days, expiration, exceptions"]
-        S2["Section 5: Sick leave<br/>— certificate requirements, duration limits"]
-    end
-
-    subgraph Level3["Level 3: Full Text Chunks"]
-        C1["Unused days can be carried over<br/>up to 6 days, expires end of June..."]
-        C2["Sick leave exceeding 2 consecutive days<br/>requires a medical certificate from..."]
-    end
-
-    D1 --> S1 & S2
-    S1 --> C1
-    S2 --> C2
-
-    style Level1 fill:#e3f2fd,stroke:#2196f3
-    style Level2 fill:#fff3e0,stroke:#ff9800
-    style Level3 fill:#e8f5e9,stroke:#4caf50
-```
-
-**How it works:** Search Level 1 → find relevant document → search Level 2 within that document → find relevant section → retrieve Level 3 full text. Drastically reduces search space for large doc sets.
-
-**When to use:** 500+ pages where flat search returns too many irrelevant results.
-
-#### 3. Re-Ranking
-
-Retrieve a large initial set (top 20), then use a more accurate model to re-rank and pick the truly best matches:
-
-```mermaid
-graph LR
-    Q["Query"] --> Retrieve["Vector Search<br/>Retrieve top 20<br/>(fast, less accurate)"]
-    Retrieve --> Rerank["Re-Rank Model<br/>Score each of 20<br/>(slower, more accurate)"]
-    Rerank --> Top5["Return top 5<br/>(high quality)"]
-
-    style Retrieve fill:#fff3e0,stroke:#ff9800
-    style Rerank fill:#e3f2fd,stroke:#2196f3
-    style Top5 fill:#e8f5e9,stroke:#4caf50
-```
-
-```typescript
-const results = await rag.search(query, {
-  topK: 20,                    // retrieve more candidates
-  rerank: {
-    model: "cohere-rerank-v3", // or cross-encoder model
-    topN: 5,                   // keep only best 5 after reranking
-  },
-});
-```
-
-**When to use:** When the top 5 from vector search often includes irrelevant results, but the correct answer IS in the top 20.
-
-#### 4. Query Transformation
-
-User questions are often vague or colloquial. Transform them into better search queries before searching:
-
-```mermaid
-sequenceDiagram
-    actor User as Employee
-    participant Agent as Agent
-    participant LLM as Claude
-    participant RAG as RAG Search
-
-    User->>Agent: "Can I work from home tomorrow or what?"
-
-    Note over LLM: Transform vague question<br/>into precise search query
-    Agent->>LLM: Rewrite this as a policy search query
-    LLM-->>Agent: "WFH eligibility rules and request process"
-
-    Agent->>RAG: search("WFH eligibility rules and request process")
-    RAG-->>Agent: Relevant policy chunks
-    Agent-->>User: "According to the WFH policy, you can WFH up to 2 days per week..."
-```
-
-**Techniques:**
-- **Query rewriting:** LLM rephrases vague questions into precise search terms
-- **HyDE (Hypothetical Document Embedding):** LLM generates a hypothetical answer, then searches for real chunks similar to that answer
-- **Multi-query:** Generate 3 variations of the question, search all 3, merge results
-
-```typescript
-// Multi-query example
-const queries = await llm.generate(
-  `Generate 3 different search queries for: "${userQuestion}"`
-);
-// queries: ["WFH policy frequency limit", "work from home rules", "remote work eligibility"]
-// Search all 3, merge and deduplicate results
-```
-
-**When to use:** When users ask colloquial or ambiguous questions that don't match policy document terminology.
-
-#### 5. Parent-Child Retrieval (Small-to-Big)
-
-Match on small chunks (more precise), but return the surrounding larger context (more complete):
-
-```mermaid
-graph TD
-    subgraph Parent["Parent Chunk (full section, ~1500 tokens)"]
-        subgraph Child1["Child Chunk 1 (200 tokens)"]
-            T1["Annual leave is 20 days per year..."]
-        end
-        subgraph Child2["Child Chunk 2 (200 tokens) - MATCHED"]
-            T2["Unused days can be carried over up to 6 days..."]
-        end
-        subgraph Child3["Child Chunk 3 (200 tokens)"]
-            T3["Carryover days expire at the end of June..."]
-        end
-    end
-
-    Search["Search matches<br/>Child Chunk 2"] -.-> Child2
-    Child2 -.->|"Return parent<br/>(full section)"| Result["Agent receives<br/>all 3 child chunks<br/>= complete context"]
-
-    style Child2 fill:#fff3e0,stroke:#ff9800
-    style Parent fill:#e8f5e9,stroke:#4caf50
-```
-
-**How it works:** Index small chunks (200 tokens) for precise matching. When a match is found, return the parent chunk (the full section, ~1500 tokens) to give the LLM complete context.
-
-**When to use:** When answers require surrounding context that a single small chunk doesn't provide. E.g., a chunk says "6 days" but the context about "expires in June" is in the adjacent chunk.
-
-#### 6. Self-Query (Auto Filter Extraction)
-
-The agent extracts structured filters from natural language before searching:
-
-```mermaid
-sequenceDiagram
-    actor User as Employee
-    participant Agent as Agent
-    participant LLM as Claude
-    participant RAG as RAG Search
-
-    User->>Agent: "What changed in the WFH policy last month?"
-
-    Note over LLM: Extract filters from question
-    Agent->>LLM: Extract: category, date range, action
-    LLM-->>Agent: { category: "wfh", after: "2026-03-01", intent: "changes" }
-
-    Agent->>RAG: search("WFH policy changes", filter: { category: "wfh", last_updated: ">2026-03-01" })
-    RAG-->>Agent: Only recently updated WFH chunks
-    Agent-->>User: "The WFH policy was updated on March 15th. The main change is..."
-```
-
-**When to use:** When users ask time-scoped or category-specific questions and you have metadata to filter on.
+For advanced techniques (hybrid search, re-ranking, hierarchical index, query transformation, parent-child retrieval, self-query), see [Appendix A: Advanced RAG Techniques](#appendix-a-advanced-rag-techniques).
 
 ### Technique Selection Guide
 
@@ -767,7 +609,7 @@ OpenWT's HR policies are in the first level — the simplest setup is sufficient
 
 ---
 
-## 4. Vision AI for Documents
+## 5. Vision AI for Documents
 
 ### Verdict: Claude/GPT-4o work well; Vietnamese printed text is reliable
 
@@ -862,7 +704,7 @@ Phase 2 can add Microsoft Presidio or a dedicated NER model for deeper PII detec
 
 ---
 
-## 5. Deployment & Cost
+## 6. Deployment & Cost
 
 ### API Cost Estimation (~200 employees, ~75 queries/day)
 
@@ -874,6 +716,15 @@ Phase 2 can add Microsoft Presidio or a dedicated NER model for deeper PII detec
 | GPT-4o | ~$80-130 |
 
 **Recommendation:** Use **Claude Haiku or GPT-4o-mini** for routine queries (balance checks, policy Q&A) and **Claude Sonnet** for complex tasks (Vision, multi-step workflows). Estimated total: **$50-100/month**.
+
+### Optimization:
+- Streaming SSE for <500ms perceived latency
+- Caching strategy: see [Section 8: Caching & Data Freshness](#8-caching--data-freshness)
+- 24h TTL for conversation state
+
+---
+
+## 7. Docker & Infrastructure
 
 ### Docker Compose Architecture
 
@@ -1167,12 +1018,9 @@ if (currentPolicyHash !== workflow.payload.policyHash) {
 }
 ```
 
-### Optimization:
-- Streaming SSE for <500ms perceived latency
-- Caching strategy: see Data Freshness section below
-- 24h TTL for conversation state
+---
 
-### Data Freshness & Caching Strategy
+## 8. Caching & Data Freshness
 
 AI agents reading from external APIs face **stale data risk** — serving outdated information that could lead to wrong decisions (e.g., user submits leave based on incorrect balance). This section defines what to cache, what to always fetch live, and how to handle edge cases.
 
@@ -1297,6 +1145,10 @@ If same: skip (no-op)
 - Mastra has **no built-in tool result caching** — each tool call hits the API. Caching must be implemented in the tool function
 - Mastra's **Observational Memory** manages conversation context compression but does NOT address data freshness
 - **Memory threads** persist across sessions — stale data from a previous session could resurface. Always re-fetch at session start for transactional data
+
+---
+
+## 9. Memory Management
 
 ### Semantic Recall Setup
 
@@ -1498,7 +1350,7 @@ Sources: [Mastra Memory Docs](https://mastra.ai/docs/memory/overview), [Mastra O
 
 ---
 
-## 6. Market Validation & UX Patterns
+## 10. Market Validation & UX Patterns
 
 ### Commercial comparisons:
 - Leena AI: 70-80% query deflection, $2-4/emp/month
@@ -1528,7 +1380,7 @@ Sources: [Mastra Memory Docs](https://mastra.ai/docs/memory/overview), [Mastra O
 
 ---
 
-## 7. Revised Technical Architecture
+## 11. Technical Architecture
 
 ### How the 2 services coexist (Employee App vs Vacation Co-Pilot)
 
@@ -2048,7 +1900,7 @@ graph TB
 
 ---
 
-## 8. Recommended Phase Plan
+## 12. Recommended Phase Plan
 
 > Detailed council decisions: see [m1-prd.md](m1-prd.md) Decisions Log section
 
@@ -2081,7 +1933,7 @@ graph TB
 
 ---
 
-## 9. Guardrails & Safety
+## 13. Guardrails & Safety
 
 ### Overview
 
@@ -2210,7 +2062,7 @@ For bulk operations or approvals, direct them to the admin dashboard.
 - Run the eval suite against any prompt change before deploying
 - Keep a changelog in the prompt file documenting what changed and why
 
-### 9.1. Prompt Injection Prevention
+### 13.1. Prompt Injection Prevention
 
 OWASP LLM Top 10 (2025) ranks prompt injection as #1 vulnerability. Defenses:
 
@@ -2238,7 +2090,7 @@ const agent = new Agent({
 });
 ```
 
-### 9.2. Hallucination Prevention
+### 13.2. Hallucination Prevention
 
 The AI must NEVER invent vacation balances or make up policy answers.
 
@@ -2261,7 +2113,7 @@ const instructions = `
 `;
 ```
 
-### 9.3. Scope Enforcement
+### 13.3. Scope Enforcement
 
 Ensure the agent only accesses data for the authenticated user:
 
@@ -2285,7 +2137,7 @@ graph TD
 | Whitelisted endpoints only | Mastra tool definitions — only registered tools are callable |
 | Row-level security | Employee App database (existing) |
 
-### 9.4. Role-Based Access Control (RBAC Scalability)
+### 13.4. Role-Based Access Control (RBAC Scalability)
 
 Current MVP targets employee features only. This section documents how the architecture scales to admin/manager roles without re-architecture.
 
@@ -2395,7 +2247,7 @@ const getInstructions = (role: string) => {
 
 **Defense-in-depth:** Even if Layer 1 (tools) or Layer 2 (prompt) are compromised, Layer 3 (API authorization) blocks unauthorized access. Security is never AI-dependent.
 
-### 9.5. Rate Limiting & Abuse Prevention
+### 13.5. Rate Limiting & Abuse Prevention
 
 | Limit | Value | Rationale |
 |-------|-------|-----------|
@@ -2528,7 +2380,7 @@ sequenceDiagram
 
 If the Employee App API does NOT currently have team coverage checks, this is documented as a **dependency gap** — the AI agent cannot add business rules that don't exist in the source system.
 
-### 9.6. Human-in-the-Loop
+### 13.6. Human-in-the-Loop
 
 All write operations require explicit confirmation:
 
@@ -2564,7 +2416,7 @@ sequenceDiagram
 - User can edit parameters, not just yes/no
 - Medical document processing also requires consent popup (PDPD)
 
-### 9.6.1. Mastra Workflow Suspend/Resume Pattern
+### 13.6.1. Mastra Workflow Suspend/Resume Pattern
 
 The submit leave flow uses Mastra's **durable workflow** with suspend/resume to implement human-in-the-loop confirmation. The workflow pauses at the confirmation step, persists state to PostgreSQL, and resumes only when the user explicitly confirms.
 
@@ -2681,7 +2533,7 @@ CREATE INDEX idx_pending_user_state ON pending_workflows (user_id, state);
 
 This pattern applies to all "Careful" AI Readiness features in the [product-roadmap.md](product-roadmap.md) Feature Matrix — any write operation that requires human confirmation before execution.
 
-### 9.7. MAESTRO Framework Reference
+### 13.7. MAESTRO Framework Reference
 
 MAESTRO (Multi-Agent Environment, Security, Threat Risk, and Outcome) is a threat-modeling framework from the Cloud Security Alliance (2025). It defines 7 layers:
 
@@ -2701,7 +2553,7 @@ Sources: [OWASP LLM Top 10](https://genai.owasp.org/llmrisk/llm01-prompt-injecti
 
 ---
 
-## 10. Testing & Evaluation
+## 14. Testing & Evaluation
 
 ### Overview
 
@@ -3036,6 +2888,193 @@ ORDER BY day DESC;
 At ~200 employees, ~75 queries/day, expected daily cost is $1.50-3.00 (Haiku-dominant). Vision AI adds ~$0.05-0.10/day for the ~5-10 image uploads. Total monthly: $50-100.
 
 Sources: [Mastra Evals](https://mastra.ai/docs/evals/overview), [DeepEval](https://deepeval.com), [RAGAS](https://docs.ragas.io), [Langfuse](https://langfuse.com), [AWS Agent Evaluation](https://aws.amazon.com/blogs/machine-learning/evaluating-ai-agents-real-world-lessons-from-building-agentic-systems-at-amazon/)
+
+---
+
+## Appendix A: Advanced RAG Techniques
+
+The following techniques are NOT needed for OpenWT's ~10-50 pages of HR policy docs, but are documented here as reference for when document volume grows or retrieval accuracy needs improvement.
+
+### A.1. Hybrid Search (Vector + Keyword)
+
+Vector search finds semantically similar text but can miss exact terms. Keyword search finds exact matches but misses synonyms. Combining both gives best results.
+
+```mermaid
+graph LR
+    Q["User query"] --> V["Vector Search<br/>(semantic similarity)"]
+    Q --> K["Keyword Search<br/>(BM25 exact match)"]
+    V --> Merge["Merge & Score<br/>0.7 * vector + 0.3 * keyword"]
+    K --> Merge
+    Merge --> Top5["Top 5 results"]
+
+    style V fill:#e3f2fd,stroke:#2196f3
+    style K fill:#fff3e0,stroke:#ff9800
+    style Merge fill:#e8f5e9,stroke:#4caf50
+```
+
+```typescript
+// pgvector supports hybrid search natively
+const results = await rag.search(query, {
+  mode: "hybrid",              // vector + keyword
+  vectorWeight: 0.7,
+  keywordWeight: 0.3,
+  topK: 10,
+});
+```
+
+**When to use:** When users ask questions using specific policy terms (e.g., "Article 5.2" or "probation period") that vector search might rank low but keyword search catches exactly.
+
+### A.2. Hierarchical Index (Summary → Section → Detail)
+
+Instead of searching all chunks equally, build a 3-level index like a table of contents:
+
+```mermaid
+graph TD
+    subgraph Level1["Level 1: Document Summaries"]
+        D1["leave-policy.md: Covers annual leave,<br/>sick leave, carryover rules, and approval flow"]
+        D2["wfh-policy.md: Covers WFH eligibility,<br/>frequency limits, and request process"]
+    end
+
+    subgraph Level2["Level 2: Section Summaries"]
+        S1["Section 3: Carryover rules<br/>— max days, expiration, exceptions"]
+        S2["Section 5: Sick leave<br/>— certificate requirements, duration limits"]
+    end
+
+    subgraph Level3["Level 3: Full Text Chunks"]
+        C1["Unused days can be carried over<br/>up to 6 days, expires end of June..."]
+        C2["Sick leave exceeding 2 consecutive days<br/>requires a medical certificate from..."]
+    end
+
+    D1 --> S1 & S2
+    S1 --> C1
+    S2 --> C2
+
+    style Level1 fill:#e3f2fd,stroke:#2196f3
+    style Level2 fill:#fff3e0,stroke:#ff9800
+    style Level3 fill:#e8f5e9,stroke:#4caf50
+```
+
+**How it works:** Search Level 1 → find relevant document → search Level 2 within that document → find relevant section → retrieve Level 3 full text. Drastically reduces search space for large doc sets.
+
+**When to use:** 500+ pages where flat search returns too many irrelevant results.
+
+### A.3. Re-Ranking
+
+Retrieve a large initial set (top 20), then use a more accurate model to re-rank and pick the truly best matches:
+
+```mermaid
+graph LR
+    Q["Query"] --> Retrieve["Vector Search<br/>Retrieve top 20<br/>(fast, less accurate)"]
+    Retrieve --> Rerank["Re-Rank Model<br/>Score each of 20<br/>(slower, more accurate)"]
+    Rerank --> Top5["Return top 5<br/>(high quality)"]
+
+    style Retrieve fill:#fff3e0,stroke:#ff9800
+    style Rerank fill:#e3f2fd,stroke:#2196f3
+    style Top5 fill:#e8f5e9,stroke:#4caf50
+```
+
+```typescript
+const results = await rag.search(query, {
+  topK: 20,                    // retrieve more candidates
+  rerank: {
+    model: "cohere-rerank-v3", // or cross-encoder model
+    topN: 5,                   // keep only best 5 after reranking
+  },
+});
+```
+
+**When to use:** When the top 5 from vector search often includes irrelevant results, but the correct answer IS in the top 20.
+
+### A.4. Query Transformation
+
+User questions are often vague or colloquial. Transform them into better search queries before searching:
+
+```mermaid
+sequenceDiagram
+    actor User as Employee
+    participant Agent as Agent
+    participant LLM as Claude
+    participant RAG as RAG Search
+
+    User->>Agent: "Can I work from home tomorrow or what?"
+
+    Note over LLM: Transform vague question<br/>into precise search query
+    Agent->>LLM: Rewrite this as a policy search query
+    LLM-->>Agent: "WFH eligibility rules and request process"
+
+    Agent->>RAG: search("WFH eligibility rules and request process")
+    RAG-->>Agent: Relevant policy chunks
+    Agent-->>User: "According to the WFH policy, you can WFH up to 2 days per week..."
+```
+
+**Techniques:**
+- **Query rewriting:** LLM rephrases vague questions into precise search terms
+- **HyDE (Hypothetical Document Embedding):** LLM generates a hypothetical answer, then searches for real chunks similar to that answer
+- **Multi-query:** Generate 3 variations of the question, search all 3, merge results
+
+```typescript
+// Multi-query example
+const queries = await llm.generate(
+  `Generate 3 different search queries for: "${userQuestion}"`
+);
+// queries: ["WFH policy frequency limit", "work from home rules", "remote work eligibility"]
+// Search all 3, merge and deduplicate results
+```
+
+**When to use:** When users ask colloquial or ambiguous questions that don't match policy document terminology.
+
+### A.5. Parent-Child Retrieval (Small-to-Big)
+
+Match on small chunks (more precise), but return the surrounding larger context (more complete):
+
+```mermaid
+graph TD
+    subgraph Parent["Parent Chunk (full section, ~1500 tokens)"]
+        subgraph Child1["Child Chunk 1 (200 tokens)"]
+            T1["Annual leave is 20 days per year..."]
+        end
+        subgraph Child2["Child Chunk 2 (200 tokens) - MATCHED"]
+            T2["Unused days can be carried over up to 6 days..."]
+        end
+        subgraph Child3["Child Chunk 3 (200 tokens)"]
+            T3["Carryover days expire at the end of June..."]
+        end
+    end
+
+    Search["Search matches<br/>Child Chunk 2"] -.-> Child2
+    Child2 -.->|"Return parent<br/>(full section)"| Result["Agent receives<br/>all 3 child chunks<br/>= complete context"]
+
+    style Child2 fill:#fff3e0,stroke:#ff9800
+    style Parent fill:#e8f5e9,stroke:#4caf50
+```
+
+**How it works:** Index small chunks (200 tokens) for precise matching. When a match is found, return the parent chunk (the full section, ~1500 tokens) to give the LLM complete context.
+
+**When to use:** When answers require surrounding context that a single small chunk doesn't provide. E.g., a chunk says "6 days" but the context about "expires in June" is in the adjacent chunk.
+
+### A.6. Self-Query (Auto Filter Extraction)
+
+The agent extracts structured filters from natural language before searching:
+
+```mermaid
+sequenceDiagram
+    actor User as Employee
+    participant Agent as Agent
+    participant LLM as Claude
+    participant RAG as RAG Search
+
+    User->>Agent: "What changed in the WFH policy last month?"
+
+    Note over LLM: Extract filters from question
+    Agent->>LLM: Extract: category, date range, action
+    LLM-->>Agent: { category: "wfh", after: "2026-03-01", intent: "changes" }
+
+    Agent->>RAG: search("WFH policy changes", filter: { category: "wfh", last_updated: ">2026-03-01" })
+    RAG-->>Agent: Only recently updated WFH chunks
+    Agent-->>User: "The WFH policy was updated on March 15th. The main change is..."
+```
+
+**When to use:** When users ask time-scoped or category-specific questions and you have metadata to filter on.
 
 ---
 
