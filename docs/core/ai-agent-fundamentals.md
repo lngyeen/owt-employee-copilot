@@ -1,14 +1,32 @@
 # AI Agent Fundamentals — Technical Reference
 
-*Last updated: 2026-04-07 | Companion to [research-report.md](research-report.md)*
+*Last updated: 2026-04-07*
 
-This document covers foundational AI agent concepts — applicable to any agent project, not just Vacation Co-Pilot. For implementation-specific research, see [research-report.md](research-report.md).
+This document covers foundational AI agent concepts — applicable to any AI agent project. Use it as a reference when designing, building, or evaluating conversational agents.
+
+## Table of Contents
+
+1. [What is an AI Agent](#1-what-is-an-ai-agent)
+2. [Context Window](#2-context-window)
+3. [Tool Calling](#3-tool-calling)
+4. [System Prompt Design](#4-system-prompt-design)
+5. [Agent Memory](#5-agent-memory)
+6. [RAG Fundamentals](#6-rag-fundamentals)
+7. [Guardrails](#7-guardrails)
+8. [Human-in-the-Loop](#8-human-in-the-loop)
+9. [Agentic UI Patterns](#9-agentic-ui-patterns)
+10. [Observability](#10-observability)
+11. [Cost Management and Token Economics](#11-cost-management-and-token-economics)
+12. [Error Handling and Failure Modes](#12-error-handling-and-failure-modes)
+13. [Multi-Agent Orchestration](#13-multi-agent-orchestration)
+14. [Agent Communication Protocols](#14-agent-communication-protocols)
+15. [Terminology Glossary](#15-terminology-glossary)
 
 ---
 
-## 1. AI Agent Fundamentals
+## 1. What is an AI Agent
 
-### What is an AI Agent
+### Definition
 
 An **AI agent** is a software system that uses artificial intelligence — specifically a Large Language Model (LLM) — to autonomously pursue goals, make decisions, and complete tasks on behalf of a user. Unlike traditional automation that follows rigid scripts, an agent reasons about the current situation, decides what to do next, and adapts when things change.
 
@@ -35,13 +53,13 @@ graph TB
     style Agent fill:#fafafa,stroke:#616161,stroke-width:2px
 ```
 
-| Component | What It Does | Analogy | Example in Vacation Co-Pilot |
-|-----------|-------------|---------|------------------------------|
-| **Brain** (LLM) | Understands intent, reasons about next steps, generates responses | The thinking part of a human employee | Claude interprets "can I take Friday off?" as a leave request |
-| **Memory** | Stores conversation history, user preferences, past interactions | A notebook the employee carries between meetings | Remembers that user asked about balance 2 messages ago |
-| **Hands** (Tools) | Executes real-world actions via APIs, databases, file systems | The employee's computer and phone | Calls Employee App API to check vacation balance |
+| Component | What It Does | Analogy | Example |
+|-----------|-------------|---------|---------|
+| **Brain** (LLM) | Understands intent, reasons about next steps, generates responses | The thinking part of a human employee | The LLM interprets "can I take Friday off?" as a leave request |
+| **Memory** | Stores conversation history, user preferences, past interactions | A notebook the employee carries between meetings | Remembers that user asked about account balance 2 messages ago |
+| **Hands** (Tools) | Executes real-world actions via APIs, databases, file systems | The employee's computer and phone | Calls backend API to check account balance |
 
-**Agent vs. Chatbot:** A chatbot answers questions. An agent takes actions. When an employee asks "submit a leave request for next Friday," a chatbot would say "here's how to submit a leave request." An agent would actually submit the request by calling the Employee App API, confirm the details, and return the result.
+**Agent vs. Chatbot:** A chatbot answers questions. An agent takes actions. When a user asks "submit a leave request for next Friday," a chatbot would say "here's how to submit a leave request." An agent would actually submit the request by calling the backend API, confirm the details, and return the result.
 
 ---
 
@@ -81,17 +99,17 @@ graph TB
     style Layer3 fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
 ```
 
-| Layer | Responsibility | Technologies in Our Stack |
-|-------|---------------|--------------------------|
-| **Layer 1: Human-Agent Interface** | How the user interacts with the agent. Could be a chat widget, Slack bot, CLI, or voice assistant. Handles rendering, input capture, and streaming responses. | CopilotKit (React widget), Slack Bot (Milestone 2) |
-| **Layer 2: Orchestration** | The middleware between UI and agent. Routes requests, enforces approval gates (human-in-the-loop), logs traces for debugging, applies guardrails. | Mastra workflows, confirmation steps, audit logging |
-| **Layer 3: Agent Core** | The agent itself. LLM reasoning, system instructions, memory management, RAG retrieval, tool execution, and structured output formatting. | Mastra Agent + Claude + pgvector + Tools |
+| Layer | Responsibility | Example Technologies |
+|-------|---------------|---------------------|
+| **Layer 1: Human-Agent Interface** | How the user interacts with the agent. Could be a chat widget, Slack bot, CLI, or voice assistant. Handles rendering, input capture, and streaming responses. | Chat widget framework (e.g., CopilotKit, Vercel AI SDK), Slack Bot, CLI |
+| **Layer 2: Orchestration** | The middleware between UI and agent. Routes requests, enforces approval gates (human-in-the-loop), logs traces for debugging, applies guardrails. | Agent framework workflows (e.g., Mastra, LangChain, CrewAI), confirmation steps, audit logging |
+| **Layer 3: Agent Core** | The agent itself. LLM reasoning, system instructions, memory management, RAG retrieval, tool execution, and structured output formatting. | Agent framework + LLM + vector database + tools |
 
-**Key insight:** Each layer is independently replaceable. You can swap the CopilotKit widget for a Slack bot (Layer 1 change) without touching the agent logic (Layer 3). You can switch from Claude to GPT-4o (Layer 3 change) without touching the UI (Layer 1). This separation is why Mastra + CopilotKit is a strong architectural choice — they handle Layer 3 and Layer 1 independently.
+**Key insight:** Each layer is independently replaceable. You can swap the chat widget for a Slack bot (Layer 1 change) without touching the agent logic (Layer 3). You can switch from Claude to GPT-4o (Layer 3 change) without touching the UI (Layer 1). Good architecture keeps these layers decoupled.
 
 ---
 
-### Context Window
+## 2. Context Window
 
 The **context window** is the total amount of text an LLM can process in a single API call — both the input (your prompt, conversation history, tool results) and the output (the response). It is measured in **tokens** (roughly 1 token = 0.75 words in English, or about 1 syllable in Vietnamese).
 
@@ -102,15 +120,15 @@ Think of the context window as the AI's **working desk**. Everything the agent n
 | GPT-4o | 128K tokens | ~400 pages | 2024 | Widely deployed |
 | GPT-4.1 | 1M tokens | ~3,125 pages | Apr 2025 | 1M context for all 4.1 variants |
 | GPT-4.1 mini / nano | 1M tokens | ~3,125 pages | Apr 2025 | Cost-efficient, same context |
-| Claude Haiku | 200K tokens | ~625 pages | 2024-2025 | Fast, cheapest Claude |
-| Claude Sonnet | 200K tokens | ~625 pages | 2025 | Best coding model |
-| Claude Opus | 200K tokens | ~625 pages | 2025 | Deepest reasoning |
+| Claude 3.5 Haiku | 200K tokens | ~625 pages | 2024-2025 | Fast, cheapest Claude |
+| Claude 4 Sonnet | 200K tokens | ~625 pages | 2025 | Best coding model |
+| Claude 4 Opus | 200K tokens | ~625 pages | 2025 | Deepest reasoning |
 | Gemini 2.5 Pro | 1M tokens (2M preview) | ~3,125-6,250 pages | 2025 | Largest production context |
 | Gemini 2.5 Flash | 1M tokens | ~3,125 pages | 2025 | Fast + large context |
 | Llama 4 Scout | 10M tokens | ~31,250 pages | Apr 2025 | Largest context window of any model (MoE 109B/400B) |
 | Llama 4 Maverick | 1M tokens | ~3,125 pages | Apr 2025 | Open-source, MoE 400B |
 
-#### The "Lost in the Middle" Problem
+### The "Lost in the Middle" Problem
 
 Research (Liu et al., 2023) shows that LLMs perform best when relevant information is at the **beginning** or **end** of the context window, but performance drops **15-30%** when the same information is placed in the middle.
 
@@ -134,33 +152,54 @@ graph LR
 - Tool call results (injected mid-context)
 - The current user message (at the end)
 
-As conversations grow, critical information (like RAG results or earlier tool outputs) gets pushed into the "middle zone" where the LLM is least reliable. This is why **memory management** (Section B) is essential — not optional — for production agents.
+As conversations grow, critical information (like RAG results or earlier tool outputs) gets pushed into the "middle zone" where the LLM is least reliable. This is why **memory management** (Section 5) is essential — not optional — for production agents.
 
-**For Vacation Co-Pilot:** A typical interaction uses ~2-5K tokens. But a long troubleshooting session with multiple tool calls and RAG retrievals can consume 30-50K tokens. With Claude's 200K window, this gives comfortable headroom, but memory management is still needed for multi-turn sessions.
+### Token Counting Example
+
+```
+Session starts
+├── System prompt loaded (~2K tokens)
+├── User: "How many vacation days do I have?" (+50 tokens)
+├── Agent: [calls lookupData tool] (+200 tokens)
+├── Tool result: { remaining: 12 } (+100 tokens)
+├── Agent: "You have 12 days remaining." (+30 tokens)
+├── User: "Can I take next Friday off?" (+40 tokens)
+├── Agent: [calls checkCalendar tool] (+150 tokens)
+├── ... conversation continues ...
+└── Total: grows with every turn
+```
+
+### Management Techniques
+
+| Technique | How It Works | Trade-off |
+|-----------|-------------|-----------|
+| **Sliding window** | Keep only the last N messages, drop oldest | Simple, but loses early context |
+| **Token counting** | Track total tokens, truncate when approaching limit | Precise, but abrupt cutoff |
+| **Summary injection** | When approaching limit, summarize older messages into a compact paragraph, keep recent messages verbatim | Best quality, costs one extra LLM call |
 
 ---
 
-### Tool Calling: How Agents Take Action
+## 3. Tool Calling
 
 **Tools** are external capabilities that the agent can invoke — API calls, database queries, file operations, calculations, or any function you define. Tools are what turn an LLM from a text generator into an agent that acts in the real world.
 
-The key insight: the LLM does not execute the tool itself. It outputs a structured request ("I want to call `getVacationBalance` with `userId: 123`"), and the **application layer** (Mastra, in our case) executes the actual function, then feeds the result back to the LLM.
+The key insight: the LLM does not execute the tool itself. It outputs a structured request ("I want to call `getAccountBalance` with `userId: 123`"), and the **application layer** (the agent framework) executes the actual function, then feeds the result back to the LLM.
 
 ```mermaid
 sequenceDiagram
-    actor User as Employee
-    participant App as CopilotKit<br/>(Frontend)
-    participant Orch as Mastra<br/>(Orchestration)
-    participant LLM as Claude<br/>(Brain)
-    participant Tool as Employee App API<br/>(Tool)
+    actor User
+    participant App as Frontend<br/>(Chat Widget)
+    participant Orch as Agent Framework<br/>(Orchestration)
+    participant LLM as LLM<br/>(Brain)
+    participant Tool as Backend API<br/>(Tool)
 
     User->>App: "How many vacation days do I have left?"
     App->>Orch: Forward message + conversation context
     Orch->>LLM: System prompt + conversation + available tools list
 
-    Note over LLM: Decides to call<br/>getVacationBalance tool
+    Note over LLM: Decides to call<br/>getAccountBalance tool
 
-    LLM-->>Orch: tool_call: getVacationBalance({ userId: "emp-123" })
+    LLM-->>Orch: tool_call: getAccountBalance({ userId: "emp-123" })
     Orch->>Tool: GET /api/leave/balance?userId=emp-123
     Tool-->>Orch: { annual: 20, used: 8, remaining: 12 }
     Orch->>LLM: Tool result: { remaining: 12 }
@@ -172,66 +211,80 @@ sequenceDiagram
     App-->>User: "You have 12 vacation days remaining out of 20."
 ```
 
-**How tool calling works step by step:**
+### How Tool Calling Works Step by Step
 
-1. **Tool definition:** Developer defines tools with name, description, and parameter schema (Zod in Mastra). The description is critical — the LLM reads it to decide when to use the tool.
+1. **Tool definition:** Developer defines tools with name, description, and parameter schema (e.g., Zod, JSON Schema, Pydantic). The description is critical — the LLM reads it to decide when to use the tool.
 2. **Tool selection:** The LLM receives the user's message plus a list of available tools. Based on the user's intent, it decides whether to call a tool (and which one) or just respond with text.
 3. **Structured output:** The LLM outputs a JSON object specifying the tool name and arguments. It does NOT execute anything.
-4. **Execution:** The application layer (Mastra) validates the arguments against the Zod schema, executes the actual API call, and captures the result.
+4. **Execution:** The application layer (the agent framework) validates the arguments against the schema, executes the actual API call, and captures the result.
 5. **Result injection:** The tool result is added to the conversation context and sent back to the LLM.
 6. **Response generation:** The LLM reads the tool result and generates a natural language response for the user.
 
-**Multi-tool chains:** An agent can call multiple tools in sequence within a single user turn. For example, "Submit a leave request for next Friday" might trigger: `getVacationBalance` (check if enough days) then `getPublicHolidays` (check if Friday is already a holiday) then `submitLeaveRequest` (create the request). The LLM decides this chain dynamically — it is not hard-coded.
+### Multi-Tool Chains
+
+An agent can call multiple tools in sequence within a single user turn. For example, "Submit a leave request for next Friday" might trigger: `getAccountBalance` (check if enough days) then `checkCalendar` (check if Friday is already a holiday) then `submitRequest` (create the request). The LLM decides this chain dynamically — it is not hard-coded.
 
 ---
 
-### MCP (Model Context Protocol)
+## 4. System Prompt Design
 
-**MCP (Model Context Protocol)** is an open standard created by Anthropic that defines how AI agents connect to external tools and data sources. Think of it as **USB for AI tools** — a universal plug that lets any agent connect to any tool without custom integration code.
+### What is a System Prompt
 
-```mermaid
-graph TB
-    subgraph Before["Before MCP: Custom Integration per Tool"]
-        A1["Agent A"] -->|"Custom code"| T1["Slack API"]
-        A1 -->|"Custom code"| T2["Google Calendar"]
-        A1 -->|"Custom code"| T3["Stripe"]
-        A2["Agent B"] -->|"Custom code"| T1
-        A2 -->|"Custom code"| T2
-        A2 -->|"Custom code"| T3
-    end
+The **system prompt** is a set of instructions provided to the LLM at the start of every conversation that defines who the agent is, what it can do, what it must not do, and how it should respond. It is the single most important piece of configuration in an AI agent — a well-crafted system prompt can dramatically improve quality, consistency, and safety.
 
-    subgraph After["With MCP: Standard Protocol"]
-        B1["Agent A"] -->|"MCP"| MCP1["MCP Server:<br/>Slack"]
-        B1 -->|"MCP"| MCP2["MCP Server:<br/>Google Calendar"]
-        B1 -->|"MCP"| MCP3["MCP Server:<br/>Stripe"]
-        B2["Agent B"] -->|"MCP"| MCP1
-        B2 -->|"MCP"| MCP2
-        B2 -->|"MCP"| MCP3
-    end
+The system prompt is invisible to the user but shapes every response the agent generates. It sits at the top of the context window and is included in every LLM API call.
 
-    style Before fill:#fce4ec,stroke:#c62828
-    style After fill:#e8f5e9,stroke:#2e7d32
+### Bad vs. Good System Prompts
+
+| Aspect | Bad Prompt | Good Prompt |
+|--------|-----------|------------|
+| **Role** | "You are a helpful assistant." | "You are a company HR assistant, an expert in leave policies, work-from-home guidelines, and employee benefits." |
+| **Task** | "Help users with their tasks." | "Your primary task is to help employees check vacation balances, submit leave requests, answer policy questions from the company handbook, and troubleshoot common HR issues." |
+| **Boundaries** | _(none)_ | "Never fabricate leave balances — always call the getAccountBalance tool. Never provide medical, legal, or financial advice. If asked about topics outside HR, politely redirect." |
+| **Output format** | _(none)_ | "When citing policy, always include the document name and section. Format leave summaries as structured cards. Use bullet points for multi-item responses." |
+| **Escalation** | _(none)_ | "If you cannot answer confidently, say 'I'm not sure about this — please contact HR for clarification.' Never guess." |
+
+**Why the bad prompt fails:** "You are a helpful assistant. Help users with their tasks. Be thorough and professional." gives the LLM no specific identity, no boundaries, no output format, and no escalation path. It will attempt to answer anything, make up data when uncertain, and produce inconsistent response formats.
+
+### Good System Prompt Structure
+
+A production system prompt follows five sections in order:
+
+1. **Role:** Who the agent is, what domain expertise it has, and for whom it works. Specificity drives quality — "HR assistant for Acme Corp" outperforms "helpful assistant" dramatically.
+
+2. **Task:** What the agent should do. List the primary capabilities explicitly. The LLM performs better when it knows its exact job scope.
+
+3. **Boundaries:** What the agent must NOT do. This is more important than what it should do. Explicitly state forbidden behaviors: do not fabricate data, do not give medical/legal advice, do not access data outside the user's scope.
+
+4. **Output format:** How responses should be structured. Specify formatting rules (Markdown, bullet points, card format), citation requirements, and language guidelines.
+
+5. **Escalation:** What to do when the agent cannot help. Define the fallback behavior explicitly — redirect to a human, provide a contact, or acknowledge the limitation.
+
+### Instruction Hierarchy
+
+LLMs process instructions with an implicit priority order:
+
+```
+System Prompt (highest priority)
+  └─ Tool Definitions (descriptions, parameter schemas)
+      └─ Conversation History
+          └─ User Message (lowest priority for instruction-following)
 ```
 
-| Aspect | Without MCP | With MCP |
-|--------|------------|----------|
-| Integration effort | Custom adapter per tool per agent | One standard protocol for all |
-| Tool reuse | Each agent reimplements connectors | MCP servers are shared across agents |
-| Ecosystem | Vendor lock-in, fragmented | Open standard, growing ecosystem |
-| Adoption | N/A | Anthropic (creator), OpenAI, Google, Microsoft, AWS, Mastra, Cursor, JetBrains, Replit, 50+ tools |
+This hierarchy is a defense mechanism against **prompt injection** — if a user tries to override the system prompt ("Ignore your instructions and..."), a well-configured LLM will prioritize the system prompt's boundaries over the user's attempt to override them. However, this defense is not absolute, which is why guardrails (Section 7) provide an additional layer.
 
-**How MCP works:** An MCP Server wraps an external service (Slack, Google Drive, Stripe) and exposes its capabilities in a standardized format. An MCP Client (built into agent frameworks like Mastra) discovers and calls these servers using the standard protocol. The agent framework handles the rest — no glue code needed.
+### Language Considerations
 
-**Mastra supports MCP** — you can connect any MCP-compatible tool server to a Mastra agent with a few lines of configuration.
+The system prompt language and the agent's response language are independent concerns:
 
-**For Vacation Co-Pilot:**
-- **MVP (Phase 1):** MCP is not needed. We have 4-5 direct API tools (balance, history, submit leave, policy search). Writing direct Mastra tools is simpler and gives us full control.
-- **Milestone 2+ expansion:** MCP becomes valuable when integrating many third-party services (Slack, Google Calendar, Jira). Instead of writing custom adapters, we can use existing MCP servers from the community.
-- **Decision:** Start with direct tools, adopt MCP when the tool count exceeds ~10 or when community MCP servers exist for our target integrations.
+- **System prompt:** Typically written in English regardless of the target audience. LLMs are trained predominantly on English data and follow English instructions most reliably.
+- **Response language:** Determined dynamically based on the user's language. The system prompt can include an instruction like: "Respond in the same language the user uses. If the user writes in Vietnamese, respond in Vietnamese."
+
+This means an English system prompt can produce fluent Vietnamese responses — the instruction language and the output language do not need to match.
 
 ---
 
-## 2. Agent Memory (Deep Dive)
+## 5. Agent Memory
 
 ### The Problem: Context Window Limits
 
@@ -299,29 +352,6 @@ graph TB
 
 **Analogy:** RAM in a computer. Fast, always available, but volatile — when the session ends, it is gone (unless persisted to the other memory layers).
 
-**How it works:**
-
-```
-Session starts
-├── System prompt loaded (~2K tokens)
-├── User: "How many vacation days do I have?" (+50 tokens)
-├── Agent: [calls getVacationBalance tool] (+200 tokens)
-├── Tool result: { remaining: 12 } (+100 tokens)
-├── Agent: "You have 12 days remaining." (+30 tokens)
-├── User: "Can I take next Friday off?" (+40 tokens)
-├── Agent: [calls getPublicHolidays tool] (+150 tokens)
-├── ... conversation continues ...
-└── Total: grows with every turn
-```
-
-**Management techniques:**
-
-| Technique | How It Works | Trade-off |
-|-----------|-------------|-----------|
-| **Sliding window** | Keep only the last N messages, drop oldest | Simple, but loses early context |
-| **Token counting** | Track total tokens, truncate when approaching limit | Precise, but abrupt cutoff |
-| **Summary injection** | When approaching limit, summarize older messages into a compact paragraph, keep recent messages verbatim | Best quality, costs one extra LLM call |
-
 **Best for:** Every agent interaction. Working memory is always present — the question is how to manage it when it grows large.
 
 **Example — Working Memory in a leave request flow:**
@@ -332,14 +362,14 @@ Turn 1  User:   "I want to take time off next week"
         [Working memory: 2 messages, ~100 tokens]
 
 Turn 2  User:   "Monday to Wednesday"
-        Agent:  [calls getVacationBalance → 12 days remaining]
-                [calls getPublicHolidays → no holidays that week]
+        Agent:  [calls getAccountBalance → 12 days remaining]
+                [calls checkCalendar → no holidays that week]
                 "You have 12 days remaining. Taking Mon-Wed (3 days) would
                  leave you with 9. Want me to submit the request?"
         [Working memory: 4 messages + 2 tool results, ~800 tokens]
 
 Turn 3  User:   "Yes, please submit it"
-        Agent:  [calls submitLeaveRequest → success]
+        Agent:  [calls submitRequest → success]
                 "Done! Leave request submitted for Mon Apr 13 – Wed Apr 15.
                  Your manager will be notified for approval."
         [Working memory: 6 messages + 3 tool results, ~1,200 tokens]
@@ -358,7 +388,7 @@ The agent uses working memory to maintain conversational coherence — it knows 
 **How it works:**
 
 1. At the end of each session (or periodically), conversation messages are **embedded** — converted into numerical vectors that capture their meaning.
-2. These vectors are stored in a **vector database** (pgvector in our stack).
+2. These vectors are stored in a **vector database** (e.g., pgvector, Pinecone, Weaviate).
 3. When a new conversation starts, the agent can search this vector store for past messages that are semantically similar to the current query.
 4. The top matches are injected into the working memory as additional context.
 
@@ -384,7 +414,7 @@ The agent retrieved a relevant fact from 5 sessions ago without the user repeati
 
 | Aspect | Detail |
 |--------|--------|
-| Storage | pgvector (PostgreSQL extension) |
+| Storage | A vector database (e.g., pgvector, Pinecone, Weaviate) |
 | Embedding model | text-embedding-3-small or similar |
 | Search method | Cosine similarity + optional intent filtering |
 | Persistence | Cross-session, persists indefinitely (with optional TTL) |
@@ -441,40 +471,13 @@ Agent: Noted! I'll submit a WFH request for Monday Aug 11 and
 
 **Compression ratio:** ~29:1 (5,200 tokens reduced to 180 tokens). Typical range is **5-40x compression** depending on conversation length and content density.
 
-**Mastra's differentiator:** Observational memory is built into Mastra as a first-class feature. Most agent frameworks require you to build this compression pipeline manually. Mastra handles it automatically — configure a threshold, and it compresses conversations into observations without additional code.
+**Framework support:** Some agent frameworks (e.g., Mastra) offer observational memory as a built-in feature. Most frameworks require you to build this compression pipeline manually. When available as a first-class feature, you simply configure a threshold, and it compresses conversations into observations without additional code.
 
 **Best for:** Persistent personal assistants where the user returns regularly over weeks or months. The agent builds an increasingly rich profile of the user's preferences and patterns.
 
 ---
 
-### Memory Stack: Complete Context Management
-
-The three memory layers work together as a unified system, each handling a different time horizon:
-
-```mermaid
-graph LR
-    subgraph TimeScale["Time Horizons"]
-        direction LR
-        Now["⚡ NOW<br/>Working Memory<br/>This conversation"]
-        Recent["📅 RECENT<br/>Semantic Recall<br/>Past sessions<br/>(searchable)"]
-        Long["📆 LONG-TERM<br/>Observational<br/>Compressed facts<br/>(always loaded)"]
-    end
-
-    subgraph Flow["Data Flow"]
-        direction TB
-        Input["User message<br/>arrives"] --> WM["Working Memory<br/>adds to current session"]
-        WM -->|"Session ends"| Embed["Embed & store<br/>in vector DB"]
-        Embed --> SR["Semantic Recall<br/>searchable archive"]
-        WM -->|"Token threshold<br/>exceeded"| Compress["LLM summarizes<br/>key observations"]
-        Compress --> OM["Observational Memory<br/>persistent facts"]
-        SR -->|"Relevant past context"| WM
-        OM -->|"User profile loaded<br/>at session start"| WM
-    end
-
-    style Now fill:#e8f5e9,stroke:#2e7d32
-    style Recent fill:#e3f2fd,stroke:#1565c0
-    style Long fill:#fff3e0,stroke:#ef6c00
-```
+### Memory Layer Summary
 
 | Layer | Time Horizon | Persistence | Size | Access Pattern | When Used |
 |-------|-------------|-------------|------|----------------|-----------|
@@ -484,221 +487,7 @@ graph LR
 
 ---
 
-### Configuration for Vacation Co-Pilot
-
-Based on our expected usage patterns (~200 employees, average 5-10 turns per conversation, returning users):
-
-```typescript
-const memory = new Memory({
-  // Working Memory: sliding window with token limit
-  options: {
-    lastMessages: 40,         // Keep last 40 messages in context
-    semanticRecall: {
-      topK: 5,                // Retrieve 5 most relevant past messages
-      messageRange: {
-        before: 2,            // Include 2 messages before each match (for context)
-        after: 2,             // Include 2 messages after each match
-      },
-    },
-    threads: {
-      generateTitle: true,    // Auto-generate conversation titles
-    },
-  },
-
-  // Observational Memory: auto-compress long conversations
-  observational: {
-    enabled: true,
-    triggerTokens: 30_000,    // Compress when conversation exceeds 30K tokens
-    ttl: 90 * 24 * 60 * 60,  // 90-day TTL for observations
-    maxObservations: 100,     // Max 100 observations per user
-  },
-
-  // Storage: PostgreSQL with pgvector
-  storage: new PostgresStore({
-    connectionString: process.env.DATABASE_URL,
-  }),
-  vector: new PgVector({
-    connectionString: process.env.DATABASE_URL,
-  }),
-  embedder: openai.embedding("text-embedding-3-small"),
-});
-```
-
-**Why these values:**
-- **40 messages / 30K token trigger:** A typical vacation query is 5-10 turns. 40 messages gives 4-8 full conversations before compression kicks in, ensuring we never lose context mid-conversation.
-- **Top 5 semantic recall:** Balances relevance (enough past context) with token budget (5 results * ~200 tokens = ~1K tokens added to prompt).
-- **90-day TTL:** Observations about vacation preferences are relevant within a fiscal year. Older observations are pruned to avoid stale data (e.g., "prefers WFH on Mondays" might change).
-- **100 max observations:** Prevents unbounded growth. At typical usage, this equals ~6-12 months of regular interactions.
-
----
-
-## 3. Multi-Agent Orchestration
-
-### When to Use Multi-Agent
-
-The default should be **one agent**. A single agent with well-defined tools and instructions is simpler to build, easier to debug, and cheaper to run. Multi-agent architectures add coordination overhead, increase LLM costs (every agent interaction is an LLM call), and introduce new failure modes (agents misunderstanding each other).
-
-**Start with one agent. Add more when structure improves quality, speed, or reliability.**
-
-Add agents when:
-
-| Signal | Why It Means "Add an Agent" | Example |
-|--------|---------------------------|---------|
-| **Too many tools** | LLM accuracy drops when choosing between 15+ tools | One agent for leave, another for IT support |
-| **Conflicting instructions** | System prompt gets contradictory trying to cover everything | HR policy agent vs. casual conversation agent |
-| **Parallelizable work** | Independent subtasks that can run simultaneously | Check balance + search policy + check calendar in parallel |
-| **Different expertise** | Different stages need different models or prompts | Vision AI for documents (Sonnet) vs. Q&A (Haiku) |
-| **Separation of concern** | Clean boundaries improve reliability | Validator agent checks before submitter agent acts |
-
-**For Vacation Co-Pilot Phase 1:** One agent is sufficient. We have 5-7 tools, one domain (vacation/leave), and straightforward instruction boundaries. Multi-agent becomes relevant at Milestone 3+.
-
----
-
-### 3 Architecture Patterns
-
-#### Swarm (Peer-to-Peer)
-
-All agents communicate directly with each other. No central coordinator — each agent decides when to hand off to another agent based on the conversation.
-
-```mermaid
-graph TB
-    subgraph Swarm["Swarm: Peer-to-Peer"]
-        A["Agent A<br/>(Leave)"] <-->|"handoff"| B["Agent B<br/>(Policy)"]
-        B <-->|"handoff"| C["Agent C<br/>(Calendar)"]
-        A <-->|"handoff"| C
-    end
-
-    User["👤 User"] --> A
-    User --> B
-    User --> C
-
-    style Swarm fill:#fce4ec,stroke:#c62828
-```
-
-**How it works:** User talks to Agent A. Agent A decides it needs help from Agent B, so it hands off the conversation. Agent B responds, then might hand off to Agent C. The conversation bounces between agents organically.
-
-**Trade-offs:**
-- Flexible and emergent behavior
-- Hard to predict or debug (which agent is in charge?)
-- Many LLM calls (each handoff is at least one call)
-- Best for creative or exploratory tasks where the path is not known in advance
-
----
-
-#### Supervisor (Hub-and-Spoke)
-
-A central **supervisor agent** receives the user's request, breaks it into subtasks, delegates each subtask to a specialized **worker agent**, and aggregates the results.
-
-```mermaid
-graph TB
-    User["👤 User"] --> Supervisor["🎯 Supervisor Agent<br/>(Orchestrator)"]
-
-    Supervisor -->|"Task 1"| W1["Worker: Leave<br/>Balance & Requests"]
-    Supervisor -->|"Task 2"| W2["Worker: Policy<br/>RAG Search"]
-    Supervisor -->|"Task 3"| W3["Worker: Calendar<br/>Holiday Check"]
-
-    W1 -->|"Result"| Supervisor
-    W2 -->|"Result"| Supervisor
-    W3 -->|"Result"| Supervisor
-
-    Supervisor -->|"Aggregated response"| User
-
-    style Supervisor fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    style W1 fill:#e8f5e9,stroke:#2e7d32
-    style W2 fill:#e8f5e9,stroke:#2e7d32
-    style W3 fill:#e8f5e9,stroke:#2e7d32
-```
-
-**How it works:** The supervisor understands the full request, decomposes it, assigns subtasks to the right workers (who each have focused tools and instructions), then synthesizes a coherent response from worker outputs.
-
-**Trade-offs:**
-- High control and predictability
-- Supervisor can run workers in parallel for speed
-- More LLM calls (supervisor + each worker = N+1 calls minimum)
-- Mastra supports this pattern natively (supervisor pattern added Feb 2026)
-- Best for structured enterprise workflows with clear task decomposition
-
----
-
-#### Flow-to-Flow (Sequential Pipeline)
-
-Agents are chained in a fixed sequence. Each agent completes its task, then passes its output as input to the next agent. Like an assembly line.
-
-```mermaid
-graph LR
-    User["👤 User"] --> A1["Agent 1<br/>Extract<br/>(Parse document)"]
-    A1 -->|"Structured data"| A2["Agent 2<br/>Validate<br/>(Check rules)"]
-    A2 -->|"Validated data"| A3["Agent 3<br/>Submit<br/>(Create request)"]
-    A3 -->|"Confirmation"| User
-
-    style A1 fill:#e3f2fd,stroke:#1565c0
-    style A2 fill:#fff3e0,stroke:#ef6c00
-    style A3 fill:#e8f5e9,stroke:#2e7d32
-```
-
-**How it works:** Agent 1 processes the input and produces a structured output. Agent 2 takes that output, validates or enriches it, and passes it forward. Agent 3 takes the final validated data and executes the action. Each agent has a narrow, well-defined responsibility.
-
-**Trade-offs:**
-- Highest control and predictability
-- Each step is independently testable and debuggable
-- Lower cost than supervisor (no coordinator LLM calls)
-- Cannot parallelize — each step waits for the previous
-- Best for document processing, data pipelines, and sequential transformations
-
----
-
-### Pattern Comparison
-
-| Aspect | Swarm | Supervisor | Flow-to-Flow |
-|--------|-------|-----------|--------------|
-| **Structure** | Decentralized | Hub-and-spoke | Sequential chain |
-| **Control** | Low | High | Highest |
-| **LLM Cost** | High (many handoffs) | High (N+1 calls) | Medium (N calls) |
-| **Speed** | Medium | High (parallel workers) | Medium (sequential) |
-| **Debuggability** | Low | Medium | High |
-| **Flexibility** | High | Medium | Low |
-| **Best for** | Exploration, creative tasks | Enterprise workflows, complex queries | Document processing, pipelines |
-| **Mastra support** | Via agent handoff | Native supervisor pattern | Via workflows (steps) |
-
----
-
-### Application to Vacation Co-Pilot Roadmap
-
-The single-agent to multi-agent evolution maps directly to the product roadmap milestones:
-
-```mermaid
-graph TD
-    subgraph Phase1["Milestone 1: Core MVP"]
-        Single["Single Agent<br/>(Monolith)<br/>5-7 tools, one domain<br/>✅ Sufficient"]
-    end
-
-    subgraph Phase3["Milestone 3: Workflows"]
-        Flow["Flow-to-Flow<br/>Task Manager pipeline:<br/>Query → Filter → Update Status"]
-    end
-
-    subgraph Phase4["Milestone 4: Intelligence"]
-        Super["Supervisor<br/>Knowledge Search orchestrates:<br/>multiple RAG sources + cross-module queries"]
-    end
-
-    Phase1 -->|"Tool count grows"| Phase3
-    Phase3 -->|"Domain count grows"| Phase4
-
-    style Phase1 fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style Phase3 fill:#e3f2fd,stroke:#1565c0
-    style Phase4 fill:#fff3e0,stroke:#ef6c00
-```
-
-| Milestone | Architecture | Why | Agent Count |
-|------|-------------|-----|-------------|
-| **Milestone 1** (Core MVP) | Single agent | One domain (vacation), few tools, simple instructions. No coordination overhead needed. | 1 |
-| **Milestone 3** (Workflows) | Flow-to-Flow | Expense report processing is a natural pipeline: OCR receipt (Agent 1) then validate against policy (Agent 2) then submit to finance (Agent 3). Each step has clear input/output. | 2-3 per workflow |
-| **Milestone 4** (Intelligence) | Supervisor | Semantic Knowledge Search across all modules needs to coordinate: search policy docs, search training catalog, search device info — a supervisor routes to the right sub-search and merges results. | 1 supervisor + 2-3 workers |
-
-**The key principle:** Do not pre-architect for multi-agent. Build the single agent well, with clean tool boundaries and clear instructions. When a specific pain point emerges (tool overload, conflicting instructions, parallelizable work), refactor that specific boundary into a separate agent. The Mastra framework supports all three patterns, so the migration path is straightforward.
-
----
-
-## 4. RAG Fundamentals
+## 6. RAG Fundamentals
 
 ### What is RAG (Retrieval-Augmented Generation)
 
@@ -777,13 +566,9 @@ Common chunking strategies:
 
 The overlap between chunks (typically 10-20%) ensures that information at chunk boundaries is not lost.
 
-**For Vacation Co-Pilot:** HR policy documents (leave policy, WFH guidelines, device policy) are chunked using recursive splitting by Markdown headers, embedded with an embedding model, and stored in pgvector (PostgreSQL vector extension). When an employee asks a policy question, the agent searches pgvector for relevant chunks and injects them into the prompt so Claude can answer with citations.
-
-> **Note:** For advanced RAG techniques (agentic RAG loop, hybrid search, evaluation), see [research-report.md](research-report.md) Section 3.
-
 ---
 
-## 5. Guardrails Fundamentals
+## 7. Guardrails
 
 ### What Are Guardrails
 
@@ -845,124 +630,9 @@ Not all agent interactions need the same level of scrutiny. Apply guardrails pro
 | **Medium** | Policy Q&A (RAG-based answers) | Hallucination check, citation enforcement |
 | **Low** | Read-only lookups (check balance, view history) | Basic input validation, rate limiting |
 
-**For Vacation Co-Pilot:** Two guardrails are critical from day one: (1) balance validation before any leave submission — the agent must verify sufficient balance via the API before allowing a submit, never trusting its own calculation; (2) citation requirement for policy answers — every RAG-based answer must cite the source document section so employees can verify. Additional guardrails (prompt injection detection, PII masking) are added in hardening phases.
-
-> **Note:** For implementation details (Mastra processors, MAESTRO framework integration), see [research-report.md](research-report.md) Section 9.
-
 ---
 
-## 6. Observability
-
-### What is Observability for AI Agents
-
-**Observability** is the ability to understand what is happening inside your AI agent — why it made a specific decision, where time and tokens were spent, and whether the output was actually correct. For traditional software, observability means logs and metrics. For AI agents, it requires a fundamentally different approach because agent behavior is **non-deterministic** — the same input can produce different outputs, reasoning chains, and tool call sequences.
-
-Without observability, debugging an agent is like debugging a program with no stack trace: the user says "the agent gave a wrong answer" and you have no way to determine whether the issue was the retrieval, the prompt, the tool result, or the LLM's reasoning.
-
-### Three Pillars of Agent Observability
-
-```mermaid
-graph TB
-    subgraph Pillars["Three Pillars"]
-        Traces["Traces<br/>End-to-end journey<br/>of a single request"]
-        Spans["Spans<br/>Individual steps<br/>within a trace"]
-        Evals["Evals<br/>Quality scores<br/>for each response"]
-    end
-
-    Traces --> Spans
-    Spans --> Evals
-
-    style Traces fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    style Spans fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
-    style Evals fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-```
-
-| Pillar | What It Shows | Traditional Equivalent |
-|--------|-------------|----------------------|
-| **Traces** | The complete journey of a user request — from input through reasoning, tool calls, and output | A distributed trace in microservices |
-| **Spans** | Each individual step within a trace: LLM call, tool execution, guardrail check, memory retrieval | A span in OpenTelemetry |
-| **Evals** | Quality scores assigned to the agent's output: was it faithful, relevant, complete? | Unit test assertions, but for non-deterministic output |
-
-### Why Traditional Logging Is Not Enough
-
-| Challenge | Traditional Software | AI Agents |
-|-----------|---------------------|-----------|
-| Determinism | Same input = same output | Same input can produce different outputs |
-| Error visibility | Exceptions, status codes | Subtle hallucinations, irrelevant answers |
-| Multi-step logic | Predictable control flow | Dynamic reasoning chains, tool call sequences |
-| Cost | Fixed per request | Variable (token count, tool calls, retries) |
-| Quality | Binary (works/broken) | Spectrum (partially correct, mostly relevant) |
-
-### Trace Example: Anatomy of an Agent Request
-
-When a user asks "How many vacation days do I have left?", the trace captures every step:
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Agent
-    participant LLM
-    participant Tool
-    participant DB as Vector DB
-
-    Note over Agent: Trace starts
-
-    User->>Agent: "How many vacation days do I have left?"
-
-    Note over Agent: Span 1: Input Guardrail (12ms)
-    Agent->>Agent: Prompt injection check: PASS
-
-    Note over Agent: Span 2: LLM Reasoning (850ms, 1.2K tokens)
-    Agent->>LLM: System prompt + message + tool list
-    LLM-->>Agent: tool_call: getVacationBalance
-
-    Note over Agent: Span 3: Tool Execution (200ms)
-    Agent->>Tool: GET /api/leave/balance
-    Tool-->>Agent: { remaining: 12 }
-
-    Note over Agent: Span 4: LLM Response (400ms, 0.3K tokens)
-    Agent->>LLM: Tool result + conversation
-    LLM-->>Agent: "You have 12 vacation days remaining."
-
-    Note over Agent: Span 5: Output Guardrail (8ms)
-    Agent->>Agent: Schema validation: PASS
-
-    Agent->>User: "You have 12 vacation days remaining."
-
-    Note over Agent: Trace ends<br/>Total: 1,470ms | 1.5K tokens | $0.003
-```
-
-Each span records: duration, token count, cost, input/output, and status. When something goes wrong, you can pinpoint exactly which span failed and why.
-
-### Eval Scorers
-
-Evals are automated quality assessments applied to agent outputs. They produce scores from 0 to 1:
-
-| Scorer | What It Measures | Score Meaning |
-|--------|-----------------|---------------|
-| **Faithfulness** | Does the response only contain information from the retrieved context? | 1.0 = fully grounded, 0.0 = all hallucinated |
-| **Relevancy** | Does the response address the user's actual question? | 1.0 = directly answers, 0.0 = off-topic |
-| **Hallucination** | Does the response contain fabricated facts? | 1.0 = no hallucination, 0.0 = entirely fabricated |
-| **Completeness** | Does the response cover all aspects of the question? | 1.0 = complete, 0.0 = missing key information |
-| **Toxicity** | Does the response contain harmful content? | 1.0 = safe, 0.0 = toxic |
-
-### Production Monitoring Metrics
-
-Beyond per-request tracing, monitor aggregate patterns over time:
-
-- **Token usage:** Average tokens per conversation, cost per user per day
-- **Latency:** P50, P95, P99 response times; breakdown by LLM vs. tool call time
-- **Error rates:** Failed tool calls, guardrail rejections, LLM errors
-- **Quality trends:** Average eval scores over time, degradation alerts
-- **User satisfaction:** Explicit feedback (thumbs up/down), implicit signals (retry rate, conversation abandonment)
-
-**For Vacation Co-Pilot:** Mastra provides built-in tracing during development (visible in the Mastra dashboard). For production, Langfuse is the planned observability backend — it captures traces, spans, and costs, and supports custom eval scorers for faithfulness and citation quality.
-
-> **Note:** For implementation details (Mastra evals API, CI/CD integration, Langfuse setup), see [research-report.md](research-report.md) Section 10.
-
----
-
-## 7. Human-in-the-Loop (HITL)
+## 8. Human-in-the-Loop
 
 ### What is HITL
 
@@ -995,7 +665,7 @@ sequenceDiagram
     participant Tool as API
 
     User->>Agent: "Submit leave for next Friday"
-    Agent->>Agent: Prepares: submitLeave(date: "2026-04-10", type: "vacation")
+    Agent->>Agent: Prepares: submitRequest(date: "2026-04-10", type: "vacation")
 
     Note over Agent: HITL Gate
 
@@ -1003,7 +673,7 @@ sequenceDiagram
     
     alt User confirms
         User->>Agent: "Yes, submit it"
-        Agent->>Tool: submitLeave(date: "2026-04-10")
+        Agent->>Tool: submitRequest(date: "2026-04-10")
         Tool-->>Agent: { status: "approved", id: "LR-456" }
         Agent->>User: "Done! Leave request LR-456 submitted."
     else User edits
@@ -1035,68 +705,6 @@ The agent self-assesses its confidence and applies HITL selectively:
 #### Token Budget Gate
 
 Cap the total token spend per session or per action. If the agent's reasoning chain exceeds the budget (indicating it may be stuck in a loop or over-processing), pause and escalate to a human rather than burning through API credits.
-
-**For Vacation Co-Pilot:** All write operations (submit leave, cancel leave, submit WFH request) require explicit user confirmation before the API call is executed. Read-only operations (check balance, view history, policy Q&A) execute without interruption. The CopilotKit frontend renders confirmation cards with Confirm/Edit/Cancel buttons.
-
----
-
-## 8. System Prompt Design
-
-### What is a System Prompt
-
-The **system prompt** is a set of instructions provided to the LLM at the start of every conversation that defines who the agent is, what it can do, what it must not do, and how it should respond. It is the single most important piece of configuration in an AI agent — a well-crafted system prompt can dramatically improve quality, consistency, and safety.
-
-The system prompt is invisible to the user but shapes every response the agent generates. It sits at the top of the context window and is included in every LLM API call.
-
-### Bad vs. Good System Prompts
-
-| Aspect | Bad Prompt | Good Prompt |
-|--------|-----------|------------|
-| **Role** | "You are a helpful assistant." | "You are the OpenWT HR Assistant, an expert in company leave policies, work-from-home guidelines, and employee benefits for OpenWT employees." |
-| **Task** | "Help users with their tasks." | "Your primary task is to help employees check vacation balances, submit leave requests, answer policy questions from the company handbook, and troubleshoot common HR issues." |
-| **Boundaries** | _(none)_ | "Never fabricate leave balances — always call the getVacationBalance tool. Never provide medical, legal, or financial advice. If asked about topics outside HR, politely redirect." |
-| **Output format** | _(none)_ | "When citing policy, always include the document name and section. Format leave summaries as structured cards. Use bullet points for multi-item responses." |
-| **Escalation** | _(none)_ | "If you cannot answer confidently, say 'I'm not sure about this — please contact HR at hr@openwt.com for clarification.' Never guess." |
-
-**Why the bad prompt fails:** "You are a helpful assistant. Help users with their tasks. Be thorough and professional." gives the LLM no specific identity, no boundaries, no output format, and no escalation path. It will attempt to answer anything, make up data when uncertain, and produce inconsistent response formats.
-
-### Good System Prompt Structure
-
-A production system prompt follows five sections in order:
-
-1. **Role:** Who the agent is, what domain expertise it has, and for whom it works. Specificity drives quality — "HR assistant for OpenWT" outperforms "helpful assistant" dramatically.
-
-2. **Task:** What the agent should do. List the primary capabilities explicitly. The LLM performs better when it knows its exact job scope.
-
-3. **Boundaries:** What the agent must NOT do. This is more important than what it should do. Explicitly state forbidden behaviors: do not fabricate data, do not give medical/legal advice, do not access data outside the user's scope.
-
-4. **Output format:** How responses should be structured. Specify formatting rules (Markdown, bullet points, card format), citation requirements, and language guidelines.
-
-5. **Escalation:** What to do when the agent cannot help. Define the fallback behavior explicitly — redirect to a human, provide a contact, or acknowledge the limitation.
-
-### Instruction Hierarchy
-
-LLMs process instructions with an implicit priority order:
-
-```
-System Prompt (highest priority)
-  └─ Tool Definitions (descriptions, parameter schemas)
-      └─ Conversation History
-          └─ User Message (lowest priority for instruction-following)
-```
-
-This hierarchy is a defense mechanism against **prompt injection** — if a user tries to override the system prompt ("Ignore your instructions and..."), a well-configured LLM will prioritize the system prompt's boundaries over the user's attempt to override them. However, this defense is not absolute, which is why guardrails (Section 5) provide an additional layer.
-
-### Language Considerations
-
-The system prompt language and the agent's response language are independent concerns:
-
-- **System prompt:** Typically written in English regardless of the target audience. LLMs are trained predominantly on English data and follow English instructions most reliably.
-- **Response language:** Determined dynamically based on the user's language. The system prompt can include an instruction like: "Respond in the same language the user uses. If the user writes in Vietnamese, respond in Vietnamese."
-
-This means an English system prompt can produce fluent Vietnamese responses — the instruction language and the output language do not need to match.
-
-**For Vacation Co-Pilot:** The system prompt defines the agent as the OpenWT HR Assistant. Boundaries explicitly state: never fabricate balances (always call the API tool), never provide medical or legal advice, always cite policy document sources when answering policy questions. The prompt is written in English; the agent responds in whatever language the employee uses (English or Vietnamese).
 
 ---
 
@@ -1181,11 +789,337 @@ graph LR
 
 The agent should handle the tedious parts — understanding the request, calling APIs, formatting data, pre-filling forms — and present the result for human verification. The human makes the final decision, which creates both a better user experience and a natural HITL safety mechanism.
 
-**For Vacation Co-Pilot:** CopilotKit provides the generative UI layer, rendering leave summary cards, confirmation forms, and quick action chips. The AG-UI protocol (see Section 10) handles streaming structured events from the Mastra backend to the CopilotKit frontend, enabling real-time component rendering as the agent processes requests.
+---
+
+## 10. Observability
+
+### What is Observability for AI Agents
+
+**Observability** is the ability to understand what is happening inside your AI agent — why it made a specific decision, where time and tokens were spent, and whether the output was actually correct. For traditional software, observability means logs and metrics. For AI agents, it requires a fundamentally different approach because agent behavior is **non-deterministic** — the same input can produce different outputs, reasoning chains, and tool call sequences.
+
+Without observability, debugging an agent is like debugging a program with no stack trace: the user says "the agent gave a wrong answer" and you have no way to determine whether the issue was the retrieval, the prompt, the tool result, or the LLM's reasoning.
+
+### Three Pillars of Agent Observability
+
+```mermaid
+graph TB
+    subgraph Pillars["Three Pillars"]
+        Traces["Traces<br/>End-to-end journey<br/>of a single request"]
+        Spans["Spans<br/>Individual steps<br/>within a trace"]
+        Evals["Evals<br/>Quality scores<br/>for each response"]
+    end
+
+    Traces --> Spans
+    Spans --> Evals
+
+    style Traces fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style Spans fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    style Evals fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+```
+
+| Pillar | What It Shows | Traditional Equivalent |
+|--------|-------------|----------------------|
+| **Traces** | The complete journey of a user request — from input through reasoning, tool calls, and output | A distributed trace in microservices |
+| **Spans** | Each individual step within a trace: LLM call, tool execution, guardrail check, memory retrieval | A span in OpenTelemetry |
+| **Evals** | Quality scores assigned to the agent's output: was it faithful, relevant, complete? | Unit test assertions, but for non-deterministic output |
+
+### Why Traditional Logging Is Not Enough
+
+| Challenge | Traditional Software | AI Agents |
+|-----------|---------------------|-----------|
+| Determinism | Same input = same output | Same input can produce different outputs |
+| Error visibility | Exceptions, status codes | Subtle hallucinations, irrelevant answers |
+| Multi-step logic | Predictable control flow | Dynamic reasoning chains, tool call sequences |
+| Cost | Fixed per request | Variable (token count, tool calls, retries) |
+| Quality | Binary (works/broken) | Spectrum (partially correct, mostly relevant) |
+
+### Trace Example: Anatomy of an Agent Request
+
+When a user asks "How many vacation days do I have left?", the trace captures every step:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Agent
+    participant LLM
+    participant Tool
+    participant DB as Vector DB
+
+    Note over Agent: Trace starts
+
+    User->>Agent: "How many vacation days do I have left?"
+
+    Note over Agent: Span 1: Input Guardrail (12ms)
+    Agent->>Agent: Prompt injection check: PASS
+
+    Note over Agent: Span 2: LLM Reasoning (850ms, 1.2K tokens)
+    Agent->>LLM: System prompt + message + tool list
+    LLM-->>Agent: tool_call: getAccountBalance
+
+    Note over Agent: Span 3: Tool Execution (200ms)
+    Agent->>Tool: GET /api/leave/balance
+    Tool-->>Agent: { remaining: 12 }
+
+    Note over Agent: Span 4: LLM Response (400ms, 0.3K tokens)
+    Agent->>LLM: Tool result + conversation
+    LLM-->>Agent: "You have 12 vacation days remaining."
+
+    Note over Agent: Span 5: Output Guardrail (8ms)
+    Agent->>Agent: Schema validation: PASS
+
+    Agent->>User: "You have 12 vacation days remaining."
+
+    Note over Agent: Trace ends<br/>Total: 1,470ms | 1.5K tokens | $0.003
+```
+
+Each span records: duration, token count, cost, input/output, and status. When something goes wrong, you can pinpoint exactly which span failed and why.
+
+### Eval Scorers
+
+Evals are automated quality assessments applied to agent outputs. They produce scores from 0 to 1:
+
+| Scorer | What It Measures | Score Meaning |
+|--------|-----------------|---------------|
+| **Faithfulness** | Does the response only contain information from the retrieved context? | 1.0 = fully grounded, 0.0 = all hallucinated |
+| **Relevancy** | Does the response address the user's actual question? | 1.0 = directly answers, 0.0 = off-topic |
+| **Hallucination** | Does the response contain fabricated facts? | 1.0 = no hallucination, 0.0 = entirely fabricated |
+| **Completeness** | Does the response cover all aspects of the question? | 1.0 = complete, 0.0 = missing key information |
+| **Toxicity** | Does the response contain harmful content? | 1.0 = safe, 0.0 = toxic |
+
+### Production Monitoring Metrics
+
+Beyond per-request tracing, monitor aggregate patterns over time:
+
+- **Token usage:** Average tokens per conversation, cost per user per day
+- **Latency:** P50, P95, P99 response times; breakdown by LLM vs. tool call time
+- **Error rates:** Failed tool calls, guardrail rejections, LLM errors
+- **Quality trends:** Average eval scores over time, degradation alerts
+- **User satisfaction:** Explicit feedback (thumbs up/down), implicit signals (retry rate, conversation abandonment)
 
 ---
 
-## 10. Agent Communication Protocols
+## 11. Cost Management and Token Economics
+
+### Token Pricing Model
+
+LLM APIs charge per token, with **input tokens** (what you send) and **output tokens** (what the model generates) priced differently. Output tokens are typically 3-5x more expensive than input tokens because generation requires more computation than comprehension.
+
+| Model | Input (per 1M tokens) | Output (per 1M tokens) | Notes |
+|-------|----------------------|----------------------|-------|
+| Fast model (e.g., Claude 3.5 Haiku, GPT-4.1 mini) | ~$0.25-0.40 | ~$1.25-1.60 | Best for routine lookups, high-volume |
+| Capable model (e.g., Claude 4 Sonnet, GPT-4o) | ~$2.50-3.00 | ~$10.00-15.00 | Best for complex reasoning, tool chains |
+| Premium model (e.g., Claude 4 Opus, GPT-4.5) | ~$15.00+ | ~$75.00+ | Best for deep analysis, rare use |
+| GPT-4o | ~$2.50 | ~$10.00 | General purpose |
+| GPT-4.1 mini | ~$0.40 | ~$1.60 | Cost-efficient alternative |
+
+### Cost Per Conversation Estimate
+
+A typical agent conversation involves multiple LLM calls (initial reasoning, tool calls, response generation). Estimating the cost requires accounting for all of them:
+
+| Interaction Type | Approx. Tokens | Estimated Cost (Capable) | Estimated Cost (Fast) |
+|-----------------|---------------|------------------------|----------------------|
+| Simple Q&A (no tools) | ~1.5K total | ~$0.005 | ~$0.0004 |
+| Data lookup (1 tool call) | ~3K total | ~$0.02 | ~$0.002 |
+| Multi-step submission (3 tool calls + HITL) | ~8K total | ~$0.06 | ~$0.005 |
+| Policy Q&A with RAG (5 chunks injected) | ~6K total | ~$0.04 | ~$0.003 |
+
+### Model Selection Strategy
+
+Route requests to the cheapest model that can handle the task reliably:
+
+- **Fast model** (90% of requests): Data lookups, simple Q&A, status checks — routine tasks where speed and cost matter more than deep reasoning.
+- **Capable model** (9% of requests): Multi-tool chains, ambiguous intent resolution, complex policy interpretation, document analysis — tasks requiring stronger reasoning.
+- **Premium model** (1% of requests): Edge cases requiring deep analysis, multi-step planning, or maximum accuracy. Reserved for escalation paths.
+
+### Cost Optimization Techniques
+
+| Technique | Savings | How It Works |
+|-----------|---------|-------------|
+| **Prompt caching** | 50-90% on repeated prefixes | Cache the system prompt and tool definitions across calls within a session. Anthropic and OpenAI both support prompt caching natively. |
+| **Context pruning** | 20-40% per request | Summarize older conversation turns instead of sending full history. Use observational memory (Section 5) to compress long sessions. |
+| **Tool call reduction** | Variable | Combine related API calls into a single batch tool. Avoid unnecessary "confirmation" LLM calls for read-only operations. |
+| **Response length control** | 10-30% on output tokens | Instruct the model to be concise in the system prompt. Set `max_tokens` appropriately per use case. |
+
+### Budget Alerting
+
+Set per-user and per-organization spending limits. Track cumulative daily and monthly costs via observability (Section 10). Alert when spend exceeds thresholds — for example, a single user generating 100+ conversations per day may indicate a loop or abuse. Kill switches should exist at both the API key level and per-user session level.
+
+---
+
+## 12. Error Handling and Failure Modes
+
+AI agents introduce failure modes that do not exist in traditional software. Every failure should be handled explicitly with a clear recovery path.
+
+### LLM API Errors
+
+| Error | Cause | Handling Strategy |
+|-------|-------|------------------|
+| **Timeout** | LLM takes too long (>30s) | Retry once with a shorter `max_tokens`. If still failing, return a cached or template response. |
+| **Rate limit (429)** | Too many requests per minute | Retry with exponential backoff (1s, 2s, 4s, max 3 retries). Queue excess requests. |
+| **Server error (500/503)** | Provider outage | Retry with backoff. After 3 failures, fall back to a secondary model (e.g., Haiku if Sonnet is down). |
+| **Context overflow** | Input exceeds model's context window | Truncate oldest conversation turns or summarize before retrying. Log the overflow event for monitoring. |
+| **Invalid response** | Model returns malformed JSON or empty response | Retry once. If repeated, return a graceful error message to the user. |
+
+### Tool Execution Failures
+
+Tools depend on external APIs which can fail independently of the LLM:
+
+- **API timeout or 5xx:** Retry the tool call once. If still failing, inform the LLM that the tool is unavailable and let it generate a response without the tool result (graceful degradation). Example: "I was unable to check your balance right now. The backend service may be temporarily unavailable. Please try again in a few minutes."
+- **Authentication failure (401/403):** Do not retry. Log the error, notify the user that their session may have expired, and prompt re-authentication.
+- **Validation error (400):** The LLM sent bad parameters. Feed the error message back to the LLM and let it self-correct (up to 2 retries). If it keeps failing, escalate to a human-readable error.
+- **Unexpected response shape:** The API returned data in an unexpected format. Wrap tool execution in try/catch, log the raw response, and return a structured error to the LLM.
+
+### RAG Retrieval Failures
+
+| Failure | Impact | Recovery |
+|---------|--------|----------|
+| **No relevant chunks found** | Agent has no context to answer | Reply honestly: "I could not find information about that in our policy documents. Please contact HR directly." |
+| **Low relevance scores** | Retrieved chunks may be tangentially related | Apply a minimum similarity threshold (e.g., 0.7). Below threshold, treat as "no results found." |
+| **Vector DB unavailable** | All RAG queries fail | Fall back to the LLM's general knowledge with a disclaimer: "I'm answering from general knowledge, not company policy. Please verify with HR." |
+| **Stale embeddings** | Documents updated but not re-indexed | Monitor document freshness. Alert when source documents are newer than their embeddings. |
+
+### Cascading Failures in Multi-Tool Chains
+
+When an agent chains multiple tools (e.g., check balance then check holidays then submit leave), a failure in any step can cascade:
+
+1. **Fail fast:** If a critical early step fails (e.g., cannot check balance), abort the chain and inform the user. Do not proceed to submit a leave request without knowing the balance.
+2. **Partial completion:** If a non-critical step fails (e.g., holiday check fails but balance check succeeded), continue with a warning: "I could not verify public holidays for that week, but you have 12 days remaining. Want me to submit anyway?"
+3. **Rollback awareness:** For chains with side effects, track which steps completed. If step 3 (submit) fails after step 1-2 succeeded, ensure no partial state was committed. Use idempotent operations where possible.
+4. **Circuit breaker:** If the same tool fails repeatedly across multiple users, temporarily disable it and serve a cached or template response rather than retrying indefinitely.
+
+---
+
+## 13. Multi-Agent Orchestration
+
+### When to Use Multi-Agent
+
+The default should be **one agent**. A single agent with well-defined tools and instructions is simpler to build, easier to debug, and cheaper to run. Multi-agent architectures add coordination overhead, increase LLM costs (every agent interaction is an LLM call), and introduce new failure modes (agents misunderstanding each other).
+
+**Start with one agent. Add more when structure improves quality, speed, or reliability.**
+
+Add agents when:
+
+| Signal | Why It Means "Add an Agent" | Example |
+|--------|---------------------------|---------|
+| **Too many tools** | LLM accuracy drops when choosing between 15+ tools | One agent for leave, another for IT support |
+| **Conflicting instructions** | System prompt gets contradictory trying to cover everything | HR policy agent vs. casual conversation agent |
+| **Parallelizable work** | Independent subtasks that can run simultaneously | Check balance + search policy + check calendar in parallel |
+| **Different expertise** | Different stages need different models or prompts | Vision AI for documents (capable model) vs. Q&A (fast model) |
+| **Separation of concern** | Clean boundaries improve reliability | Validator agent checks before submitter agent acts |
+
+---
+
+### 3 Architecture Patterns
+
+#### Swarm (Peer-to-Peer)
+
+All agents communicate directly with each other. No central coordinator — each agent decides when to hand off to another agent based on the conversation.
+
+```mermaid
+graph TB
+    subgraph Swarm["Swarm: Peer-to-Peer"]
+        A["Agent A<br/>(Leave)"] <-->|"handoff"| B["Agent B<br/>(Policy)"]
+        B <-->|"handoff"| C["Agent C<br/>(Calendar)"]
+        A <-->|"handoff"| C
+    end
+
+    User["👤 User"] --> A
+    User --> B
+    User --> C
+
+    style Swarm fill:#fce4ec,stroke:#c62828
+```
+
+**How it works:** User talks to Agent A. Agent A decides it needs help from Agent B, so it hands off the conversation. Agent B responds, then might hand off to Agent C. The conversation bounces between agents organically.
+
+**Trade-offs:**
+- Flexible and emergent behavior
+- Hard to predict or debug (which agent is in charge?)
+- Many LLM calls (each handoff is at least one call)
+- Best for creative or exploratory tasks where the path is not known in advance
+
+---
+
+#### Supervisor (Hub-and-Spoke)
+
+A central **supervisor agent** receives the user's request, breaks it into subtasks, delegates each subtask to a specialized **worker agent**, and aggregates the results.
+
+```mermaid
+graph TB
+    User["👤 User"] --> Supervisor["🎯 Supervisor Agent<br/>(Orchestrator)"]
+
+    Supervisor -->|"Task 1"| W1["Worker: Leave<br/>Balance & Requests"]
+    Supervisor -->|"Task 2"| W2["Worker: Policy<br/>RAG Search"]
+    Supervisor -->|"Task 3"| W3["Worker: Calendar<br/>Holiday Check"]
+
+    W1 -->|"Result"| Supervisor
+    W2 -->|"Result"| Supervisor
+    W3 -->|"Result"| Supervisor
+
+    Supervisor -->|"Aggregated response"| User
+
+    style Supervisor fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style W1 fill:#e8f5e9,stroke:#2e7d32
+    style W2 fill:#e8f5e9,stroke:#2e7d32
+    style W3 fill:#e8f5e9,stroke:#2e7d32
+```
+
+**How it works:** The supervisor understands the full request, decomposes it, assigns subtasks to the right workers (who each have focused tools and instructions), then synthesizes a coherent response from worker outputs.
+
+**Trade-offs:**
+- High control and predictability
+- Supervisor can run workers in parallel for speed
+- More LLM calls (supervisor + each worker = N+1 calls minimum)
+- Many frameworks support this pattern natively (e.g., Mastra supervisor, LangGraph)
+- Best for structured enterprise workflows with clear task decomposition
+
+---
+
+#### Flow-to-Flow (Sequential Pipeline)
+
+Agents are chained in a fixed sequence. Each agent completes its task, then passes its output as input to the next agent. Like an assembly line.
+
+```mermaid
+graph LR
+    User["👤 User"] --> A1["Agent 1<br/>Extract<br/>(Parse document)"]
+    A1 -->|"Structured data"| A2["Agent 2<br/>Validate<br/>(Check rules)"]
+    A2 -->|"Validated data"| A3["Agent 3<br/>Submit<br/>(Create request)"]
+    A3 -->|"Confirmation"| User
+
+    style A1 fill:#e3f2fd,stroke:#1565c0
+    style A2 fill:#fff3e0,stroke:#ef6c00
+    style A3 fill:#e8f5e9,stroke:#2e7d32
+```
+
+**How it works:** Agent 1 processes the input and produces a structured output. Agent 2 takes that output, validates or enriches it, and passes it forward. Agent 3 takes the final validated data and executes the action. Each agent has a narrow, well-defined responsibility.
+
+**Trade-offs:**
+- Highest control and predictability
+- Each step is independently testable and debuggable
+- Lower cost than supervisor (no coordinator LLM calls)
+- Cannot parallelize — each step waits for the previous
+- Best for document processing, data pipelines, and sequential transformations
+
+---
+
+### Pattern Comparison
+
+| Aspect | Swarm | Supervisor | Flow-to-Flow |
+|--------|-------|-----------|--------------|
+| **Structure** | Decentralized | Hub-and-spoke | Sequential chain |
+| **Control** | Low | High | Highest |
+| **LLM Cost** | High (many handoffs) | High (N+1 calls) | Medium (N calls) |
+| **Speed** | Medium | High (parallel workers) | Medium (sequential) |
+| **Debuggability** | Low | Medium | High |
+| **Flexibility** | High | Medium | Low |
+| **Best for** | Exploration, creative tasks | Enterprise workflows, complex queries | Document processing, pipelines |
+| **Framework support** | Via agent handoff | Native supervisor patterns | Via workflow/pipeline APIs |
+
+**The key principle:** Do not pre-architect for multi-agent. Build the single agent well, with clean tool boundaries and clear instructions. When a specific pain point emerges (tool overload, conflicting instructions, parallelizable work), refactor that specific boundary into a separate agent. Most modern agent frameworks support all three patterns, so the migration path is straightforward.
+
+---
+
+## 14. Agent Communication Protocols
 
 Three open protocols are shaping how AI agents communicate in 2025-2026 — each solving a different connectivity problem.
 
@@ -1211,9 +1145,42 @@ graph TB
 
 ### MCP (Model Context Protocol)
 
-MCP defines how agents connect to **tools and data sources**. It is covered in detail in Section 1.5 above. In brief: MCP is the "USB-C for AI tools" — a universal protocol that lets any agent framework connect to any tool server without custom integration code. Created by Anthropic, adopted by OpenAI, Google, Microsoft, AWS, and 50+ tool providers.
+**MCP (Model Context Protocol)** is an open standard created by Anthropic that defines how AI agents connect to external tools and data sources. Think of it as **USB for AI tools** — a universal plug that lets any agent connect to any tool without custom integration code.
 
-See **Section 1 → MCP (Model Context Protocol)** for the full explanation, diagrams, and Vacation Co-Pilot application.
+```mermaid
+graph TB
+    subgraph Before["Before MCP: Custom Integration per Tool"]
+        A1["Agent A"] -->|"Custom code"| T1["Slack API"]
+        A1 -->|"Custom code"| T2["Google Calendar"]
+        A1 -->|"Custom code"| T3["Stripe"]
+        A2["Agent B"] -->|"Custom code"| T1
+        A2 -->|"Custom code"| T2
+        A2 -->|"Custom code"| T3
+    end
+
+    subgraph After["With MCP: Standard Protocol"]
+        B1["Agent A"] -->|"MCP"| MCP1["MCP Server:<br/>Slack"]
+        B1 -->|"MCP"| MCP2["MCP Server:<br/>Google Calendar"]
+        B1 -->|"MCP"| MCP3["MCP Server:<br/>Stripe"]
+        B2["Agent B"] -->|"MCP"| MCP1
+        B2 -->|"MCP"| MCP2
+        B2 -->|"MCP"| MCP3
+    end
+
+    style Before fill:#fce4ec,stroke:#c62828
+    style After fill:#e8f5e9,stroke:#2e7d32
+```
+
+| Aspect | Without MCP | With MCP |
+|--------|------------|----------|
+| Integration effort | Custom adapter per tool per agent | One standard protocol for all |
+| Tool reuse | Each agent reimplements connectors | MCP servers are shared across agents |
+| Ecosystem | Vendor lock-in, fragmented | Open standard, growing ecosystem |
+| Adoption | N/A | Anthropic (creator), OpenAI, Google, Microsoft, AWS, major frameworks, IDE tools, 50+ integrations |
+
+**How MCP works:** An MCP Server wraps an external service (Slack, Google Drive, Stripe) and exposes its capabilities in a standardized format. An MCP Client (built into agent frameworks like Mastra, LangChain, and others) discovers and calls these servers using the standard protocol. The agent framework handles the rest — no glue code needed.
+
+**When to adopt MCP:** Start with direct framework tools for the core APIs. MCP becomes valuable when integrating many third-party services (Slack, Google Calendar, Jira) or when community MCP servers exist for target integrations. A good threshold is when the tool count exceeds ~10.
 
 ---
 
@@ -1237,12 +1204,10 @@ The agent backend emits a stream of typed events over WebSocket or Server-Sent E
 
 **Why AG-UI matters:**
 
-- **Framework-agnostic:** A CopilotKit frontend can connect to Mastra, LangGraph, CrewAI, or any backend that emits AG-UI events
+- **Framework-agnostic:** A frontend can connect to Mastra, LangGraph, CrewAI, or any backend that emits AG-UI events
 - **Rich interaction:** Goes beyond text streaming — supports tool call visualization, state sync, and custom UI components
 - **Standardization:** Created by CopilotKit (2025), adopted by AWS AgentCore and others
 - **Progressive rendering:** The frontend can show tool calls in progress, partial results, and loading states, creating a responsive feel even for multi-second agent operations
-
-**For Vacation Co-Pilot:** CopilotKit uses AG-UI natively to connect to the Mastra backend. When the agent calls a tool, the frontend shows a loading indicator with the tool name. When the agent returns structured data, CopilotKit renders it as a card component. This is all handled by the AG-UI event stream — no custom WebSocket code needed.
 
 ---
 
@@ -1264,15 +1229,15 @@ The agent backend emits a stream of typed events over WebSocket or Server-Sent E
 | Scenario | A2A Needed? |
 |----------|------------|
 | Single agent with multiple tools | No — use MCP for tool connectivity |
-| Multi-agent, same framework | No — use framework-native orchestration (Mastra supervisor, LangGraph) |
+| Multi-agent, same framework | No — use framework-native orchestration (e.g., supervisor patterns, LangGraph) |
 | Multi-agent, different frameworks/languages | **Yes** — A2A standardizes cross-framework communication |
 | Multi-organization agent collaboration | **Yes** — A2A enables agents from different companies to interoperate |
 
-**For Vacation Co-Pilot:** A2A is not needed for the MVP or near-term roadmap, as all agents run within the same Mastra framework (TypeScript). A2A becomes relevant in Milestone 4+ if the system needs to integrate agents built in different languages (e.g., a Python ML agent for anomaly detection or a Go agent for high-performance data processing).
+**When to consider A2A:** A2A is not needed for most MVPs, as all agents typically run within the same framework. A2A becomes relevant when the system needs to integrate agents built in different languages or frameworks (e.g., a Python ML agent for anomaly detection alongside a TypeScript conversational agent).
 
 ---
 
-## 11. Terminology Glossary
+## 15. Terminology Glossary
 
 Quick reference for all key terms used in this document.
 
@@ -1309,14 +1274,4 @@ Quick reference for all key terms used in this document.
 
 ---
 
-## Related Documents
-
-| Document | Purpose |
-|----------|---------|
-| [research-report.md](research-report.md) | Implementation-specific research (Mastra, CopilotKit, RAG, Vision AI, deployment, guardrails, testing). Sections 3 (RAG strategies), 9 (guardrails implementation), and 10 (observability setup) provide implementation details for fundamentals covered here. |
-| [tech-stack-analysis.md](../references/tech-stack-analysis.md) | Analysis of 18 AI agent frameworks from KMS TechCafe + Google ADK |
-| [product-roadmap.md](product-roadmap.md) | Full 4-milestone product roadmap (18 features) |
-| [m1-prd.md](m1-prd.md) | Product Requirements for Milestone 1 MVP |
-
 ---
-
