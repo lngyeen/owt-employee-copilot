@@ -1,25 +1,36 @@
 # Milestone 1 PRD: OpenWT Vacation Co-Pilot (MVP)
 
+| Field | Value |
+|-------|-------|
+| Version | v1.0 |
+| Date | 2026-04-08 |
+| Status | DRAFT |
+| Author | Luu Nguyen |
+
+---
+
 ## Problem Statement
 
 OpenWT employees (~200 people) spend unnecessary time navigating multiple pages and filling manual forms on the Employee App (employee.openwt.vn) to check vacation balances, submit leave requests, and find HR policy answers. Repetitive questions like "how many days do I have left?" burden both employees and HR. There is no intelligent assistance layer — just raw forms and wiki pages.
 
-## Evidence
+**Evidence**
 
 - Developer (Luu) frequently asks the same leave-related questions — confirms this is a real daily friction
 - Commercial HR AI assistants (Leena AI, Moveworks) report 70-80% query deflection, validating demand for this category
 - Employee App already has the data (vacation balance, leave history, WFH records, devices) but no conversational interface to access it
 - Current process requires 5-7 clicks to submit a single leave request
 
+---
+
 ## Proposed Solution
 
 An AI-powered chat widget (Vacation Co-Pilot) embedded directly into the Employee App, powered by Mastra + CopilotKit + Claude. It runs as a separate microservice alongside the existing NestJS backend — minimal frontend changes only (add CopilotKit widget). Phase 1 (MVP) focuses on core leave features: balance lookup, leave/WFH history, policy Q&A, submit leave requests, and Vision AI for document processing. Milestone 2 adds device info, Slack, attendance, profile, and more modules. This approach was chosen over modifying the existing NestJS app because Mastra does not support NestJS integration, and a separate service provides independent deploy/rollback with zero risk to the existing system.
 
-## Key Hypothesis
+### Key Hypothesis
 
 We believe an AI chat assistant integrated into the Employee App will let employees get leave information instantly without navigating forms or asking HR. We'll know we're right when admin gives positive feedback and colleagues want to try it.
 
-## What We're NOT Building
+### What We're NOT Building
 
 - **Payroll/salary queries** — different sensitivity level, separate compliance requirements
 - **Mobile native app** — web widget is sufficient for MVP, mobile comes later
@@ -28,6 +39,8 @@ We believe an AI chat assistant integrated into the Employee App will let employ
 - **Custom LLM training** — using RAG over existing docs, not fine-tuning models
 
 > **Future expansion:** This PRD covers Milestone 1 (Core) only. The full product roadmap spans 4 milestones with 18 features across all Employee App modules. See [product-roadmap.md](product-roadmap.md) for the complete roadmap.
+
+---
 
 ## Success Metrics
 
@@ -38,114 +51,6 @@ We believe an AI chat assistant integrated into the Employee App will let employ
 | Query accuracy | 90%+ correct answers on vacation balance lookups | Manual spot-check during demo |
 | Response time | < 3 seconds for balance queries | Measured during demo |
 | System stability | Employee App unaffected by Co-Pilot deploy/crash | Monitor Employee App uptime during testing |
-
-## Open Questions
-
-**Resolved:**
-- [x] ~~Do we have access to modify Employee App frontend code?~~ **Yes.** Option A — embed CopilotKit directly into Employee App React source. Widget shares auth context.
-- [x] ~~Milestone 2 auth design?~~ **Service account with user context** — see Decisions Log (Decision 5).
-
-**To resolve during Phase 1 (Discovery) — requires browser DevTools:**
-- [ ] What are the exact Employee App API endpoints? (REST or GraphQL?)
-- [ ] What authentication mechanism does the Employee App use (JWT, session cookies, OAuth)?
-- [ ] Where is the token stored? (localStorage, sessionStorage, HttpOnly cookie?)
-- [ ] What JWT claims exist? (Does it contain `userId`, `role`, `sub`?)
-- [ ] Is JWT symmetric (HMAC-SHA256) or asymmetric (RS256)?
-- [ ] Does the Employee App have a token refresh mechanism?
-- [ ] Does NestJS enforce CSRF on POST endpoints? If yes, how?
-- [ ] What frontend state management is used? (Context API, Redux, Zustand, Jotai?)
-- [ ] What build system? (Webpack, Vite, Next.js?)
-- [ ] What router? (React Router, Next.js App Router, Tanstack Router?)
-- [ ] Is there an existing reverse proxy (nginx, Apache, Caddy, CloudFlare)?
-- [ ] Is Docker available on the deployment server?
-- [ ] Are ports 3001, 5432, 6379 available?
-- [ ] Is the Employee App database PostgreSQL or MySQL?
-- [ ] Is SSL/TLS already configured for employee.openwt.vn?
-
-**To resolve during implementation:**
-- [ ] Is the HR policy data on employee.openwt.vn/wiki clean enough for RAG ingestion?
-- [ ] Can CopilotKit widget embed into the existing Employee App React frontend without conflicts?
-- [ ] Where to store uploaded images (local disk, S3-compatible, or PostgreSQL bytea)? What retention policy?
-
-### Phase 1 (Discovery) Decision Matrix — Solutions Per Scenario
-
-Every integration point has multiple possible scenarios. Phase 1 (Discovery) must identify which scenario is real, then follow the corresponding solution path. See [research-report.md](research-report.md) §7.1 for implementation code per scenario.
-
-#### Auth Mechanism
-
-| Scenario | CopilotKit Integration | Mastra Validation | Effort Impact |
-|----------|----------------------|-------------------|---------------|
-| **A: JWT in localStorage** (most likely) | `headers: { Authorization: \`Bearer \${localStorage.getItem('token')}\` }` | Verify JWT signature, extract claims | Baseline (0 extra days) |
-| **B: JWT in sessionStorage** | Same as A, but `sessionStorage.getItem('token')` | Same as A | Baseline |
-| **C: JWT in HttpOnly cookie** | Widget CANNOT read token via JS. Solution: CopilotKit sends requests with `credentials: 'include'` → cookie sent automatically. Mastra reads from cookie header, not Authorization | Mastra extracts JWT from `Cookie` header instead of `Authorization` | +0.5 days |
-| **D: Session cookie (no JWT)** | `credentials: 'include'` sends session cookie. No Bearer token | Mastra forwards session cookie to Employee App API. Cannot validate locally — must call Employee App `/api/me` to get userId | +1-2 days (need session proxy pattern) |
-| **E: OAuth2 tokens** | Use OAuth token from Employee App's auth provider. `headers: { Authorization: \`Bearer \${oauthToken}\` }` | Validate with OAuth provider's JWKS endpoint, or introspect token | +1 day |
-
-**Fallback if auth mechanism is unexpected:** Add a `/copilot/auth-probe` endpoint in Mastra that accepts any request from the widget and inspects what auth artifacts arrive (headers, cookies). Run this first to discover the mechanism.
-
-#### JWT Claims
-
-| Scenario | Impact | Solution |
-|----------|--------|----------|
-| **JWT has `sub` (userId) + `role`** | Ideal — direct extraction | `const { sub, role } = verify(token, secret)` |
-| **JWT has `userId` but no `role`** | RBAC won't work from JWT alone | Call Employee App `/api/me` to get role, cache for session duration |
-| **JWT has neither** | Cannot identify user from token | Call Employee App `/api/me` on every request (expensive) or extract from token's custom claims |
-| **JWT uses non-standard claim names** | Code breaks silently | Make claim names configurable: `JWT_USER_CLAIM=sub`, `JWT_ROLE_CLAIM=role` in .env |
-
-#### JWT Signing
-
-| Scenario | Mastra Config | .env |
-|----------|--------------|------|
-| **HMAC-SHA256 (symmetric)** | `verify(token, JWT_SECRET)` | `JWT_SECRET=<shared-secret>` |
-| **RS256 (asymmetric)** | `verify(token, publicKey, { algorithms: ['RS256'] })` | `JWT_PUBLIC_KEY_PATH=/certs/public.pem` |
-| **Unknown** | Try RS256 first (safer), fallback to HMAC | Provide both options in .env |
-
-#### API Format
-
-| Scenario | Tool Implementation | Effort Impact |
-|----------|-------------------|---------------|
-| **REST (expected)** | `fetch(url, { method, headers, body })` as documented | Baseline |
-| **GraphQL** | Replace all tools with GraphQL queries: `fetch(url, { body: JSON.stringify({ query, variables }) })` | +2-3 days (rewrite all 7 tools) |
-| **Mixed (REST + GraphQL)** | Some tools use REST, some use GraphQL | +1-2 days |
-
-**Detection:** In Phase 1 (Discovery) DevTools audit, check Network tab. If requests go to a single `/graphql` endpoint with POST body, it's GraphQL. If multiple `/api/*` endpoints with different HTTP methods, it's REST.
-
-#### CSRF
-
-| Scenario | Mastra Behavior | Implementation |
-|----------|----------------|----------------|
-| **No CSRF (Bearer exempt)** | Send `Authorization: Bearer` header, no CSRF needed | Baseline |
-| **CSRF required on all POST** | Mastra must fetch CSRF token before each write operation | GET `/api/csrf-token` → include `X-CSRF-Token` header on POST |
-| **CSRF via double-submit cookie** | Mastra reads CSRF cookie, sends as header | `const csrf = cookieJar.get('XSRF-TOKEN'); headers['X-XSRF-TOKEN'] = csrf` |
-| **CSRF not applicable (cookie-less)** | If auth is Bearer-only with no cookies, CSRF is irrelevant | No action needed |
-
-#### Frontend Integration
-
-| Scenario | CopilotKit Mount Point | Considerations |
-|----------|----------------------|----------------|
-| **React + Context API auth** | Wrap `<CopilotKit>` inside existing `<AuthProvider>`, call `useAuth().getToken()` | Simplest path |
-| **React + Redux auth** | Import store, call `store.getState().auth.token` in CopilotKit headers callback | Must not trigger re-renders |
-| **React + Zustand auth** | `useAuthStore.getState().token` (non-reactive access for headers) | Works outside React components |
-| **Next.js App Router** | Mount in root `layout.tsx`, use `useSession()` from next-auth if applicable | Verify CopilotKit SSR compatibility |
-| **React Router (SPA)** | Mount in `App.tsx` root, widget persists across routes | Standard approach (documented) |
-
-#### Reverse Proxy / Deployment
-
-| Scenario | Solution | Effort Impact |
-|----------|---------|---------------|
-| **No existing reverse proxy** | Add nginx to Docker Compose (as documented) | Baseline |
-| **Already has nginx** | Add `/copilot/` location block to existing nginx config | Less effort, but need config access |
-| **Behind CloudFlare / CDN** | Configure CloudFlare to route `/copilot/*` to Mastra origin | Need CloudFlare admin access |
-| **Behind Apache** | `ProxyPass /copilot/ http://localhost:3001/` in Apache config | Different syntax, same concept |
-| **No reverse proxy + no Docker** | Run Mastra directly on host, use CORS headers for cross-origin | +1 day (CORS config needed) |
-
-#### Database
-
-| Scenario | Impact | Solution |
-|----------|--------|---------|
-| **PostgreSQL available** | Ideal — use pgvector for RAG embeddings | Baseline |
-| **Only MySQL available** | pgvector unavailable | Use separate SQLite + vector extension for embeddings, or Pinecone/Qdrant cloud |
-| **Shared PostgreSQL (no separate DB allowed)** | Must use existing DB | Create `copilot_` prefixed tables in existing DB, request schema access |
 
 ---
 
@@ -167,9 +72,9 @@ When I need to know my vacation balance or want to request time off, I want to a
 
 ---
 
-## Solution Detail
+## Requirements (MoSCoW)
 
-### Core Capabilities (MoSCoW)
+### Core Capabilities
 
 | Priority | Capability | Rationale |
 |----------|------------|-----------|
@@ -186,6 +91,18 @@ When I need to know my vacation balance or want to request time off, I want to a
 | Won't | Payroll queries | Different compliance domain, explicitly deferred |
 | Won't | Manager approval workflow | Existing approval flow stays in Employee App |
 | Won't | Custom LLM fine-tuning | RAG over docs is sufficient and much simpler |
+
+### Non-Functional Requirements
+
+| Requirement | Target |
+|-------------|--------|
+| Response time | < 3 seconds for balance queries |
+| System uptime | Employee App unaffected by Co-Pilot deploy/crash |
+| Query accuracy | 80%+ correct answers across all query types |
+
+---
+
+## MVP Scope & User Flows
 
 ### MVP Scope (Phase 1)
 
@@ -215,7 +132,7 @@ Chat assistant that can **read and write**:
 - Medical image consent popup (PDPD compliance)
 - All submissions logged with userId, timestamp, tool name, AI-extracted data
 
-### User Flows (MVP)
+### User Flows
 
 **Flow 1: Balance lookup (read)**
 ```
@@ -360,7 +277,9 @@ Employee: "Quy định về nghỉ phép khi có người nhà mất?"
 ```
 After 3 failed RAG attempts, agent provides specific HR contact info (not generic "contact HR"). This is the escalation path — no `escalateToHR()` tool needed, just system prompt instruction with concrete contact details.
 
-### Edge Cases for Write Operations
+---
+
+## Edge Cases
 
 Write operations (submit leave, Vision AI extraction) require careful handling of interrupted flows and concurrent state. These edge cases apply to all Hybrid features with "Careful" AI Readiness — see [product-roadmap.md](product-roadmap.md) Section 3.
 
@@ -425,7 +344,7 @@ graph TD
 - **Implementation details:** Tool Zod schemas ([research-report.md](research-report.md) Section 7), system prompt template (Section 9), CopilotKit integration patterns (Section 2), observability with Langfuse (Section 10)
 - **Foundational concepts:** Agent memory, RAG, guardrails, HITL patterns — see [ai-agent-fundamentals.md](ai-agent-fundamentals.md)
 
-**Auth & CSRF** — See [Decision Matrix](#phase-1-discovery-decision-matrix--solutions-per-scenario) for all auth scenarios (JWT/cookie/session/OAuth) and CSRF handling. Implementation code in [research-report.md](research-report.md) Section 3.
+**Auth & CSRF** — See [Appendix: Phase 1 Discovery Decision Matrix](#appendix-phase-1-discovery-decision-matrix) for all auth scenarios (JWT/cookie/session/OAuth) and CSRF handling. Implementation code in [research-report.md](research-report.md) Section 3.
 
 **Image Storage (Vision AI)**
 - Uploaded images stored in local Docker volume (`/data/uploads/`) with UUID filenames
@@ -452,22 +371,9 @@ graph TD
 | MVP scope | Read + Write (with guardrails) | Submit leave is the key demo feature. Human-in-the-loop + balance validation mitigate risk |
 | Auth (Phase 1) | Passthrough JWT + pre-action balance validation | JWT sufficient for Phase 1. Write safety via re-fetch + confirmation + audit log |
 
-**Technical Risks**
+---
 
-| Risk | Likelihood | Mitigation |
-|------|------------|------------|
-| Mastra breaking changes (v1.3, volatile) | Medium | Abstraction layer, pin versions, test upgrades in CI |
-| CopilotKit conflicts with existing React app | Low | Test embedding early in Phase 1, fallback to Vercel AI SDK |
-| Employee App API undocumented / changes | Medium | Map APIs via DevTools first (Phase 1 (Discovery)), build resilient error handling |
-| HR policy data too messy for RAG | Medium | Phase 1 (Discovery) policy cleanup, manual curation before ingestion |
-| Dependency diamond (Mastra + CopilotKit release sync) | Low | Pin both versions, upgrade only when tested together |
-| PDPD compliance for medical docs | Medium | Consent popup, PII redaction, audit trail. Image upload is optional. Full PDPD review before Phase 2. See Decisions Log section (Decision 3) |
-| AI submits wrong leave request | Medium | Human-in-the-loop confirmation, balance re-fetch before submit, audit log for rollback |
-| **Mastra workflow + CopilotKit suspend/resume untested** | **High** | **This exact integration pattern (Mastra suspend → CopilotKit card → resume) is not documented by either framework. MUST prototype in Week 1 before building on top. Fallback: implement confirmation via chat text (Yes/No) instead of UI card** |
-| CopilotKit `onError` API unverified | Medium | Verify CopilotKit exposes HTTP status in error callbacks during Phase 1 (Discovery). Fallback: custom fetch wrapper around CopilotKit's runtime URL |
-| JWT shared signing secret (symmetric) | Medium | Phase 1: accept risk (internal tool, ~200 users). Phase 2: migrate to RS256 asymmetric (Mastra holds public key only). See Security Notes below |
-
-**Security Notes (Phase 1)**
+## Security
 
 These security considerations are documented for awareness. Phase 1 is an internal demo for ~200 employees — risk tolerance is higher than a public-facing product. Phase 2 must address all HIGH items before wider rollout.
 
@@ -500,7 +406,7 @@ These security considerations are documented for awareness. Phase 1 is an intern
 - **Goal**: Determine exactly how the Employee App works — eliminate all assumptions
 - **How**: Open browser DevTools → Network tab, Application tab, Sources tab
 - **Output**: Set `.env` config (AUTH_MODE, API_FORMAT, JWT claims, etc.)
-- **Checklist**: See [Phase 1 (Discovery) Decision Matrix](#step-0-decision-matrix--solutions-per-scenario) above for all scenarios
+- **Checklist**: See [Appendix: Phase 1 Discovery Decision Matrix](#appendix-phase-1-discovery-decision-matrix) for all scenarios
 
 ### Phase 2: Knowledge Base (1-2 days)
 
@@ -552,6 +458,23 @@ These are the only items that can completely block the project. No technical fal
 - [ ] **Server/machine to run Docker Compose** — any Linux/Mac on OpenWT network with Docker installed
 
 If all 3 are confirmed → no remaining blockers. All other risks have documented fallbacks.
+
+---
+
+## Risks & Mitigations
+
+| Risk | Likelihood | Mitigation |
+|------|------------|------------|
+| Mastra breaking changes (v1.3, volatile) | Medium | Abstraction layer, pin versions, test upgrades in CI |
+| CopilotKit conflicts with existing React app | Low | Test embedding early in Phase 1, fallback to Vercel AI SDK |
+| Employee App API undocumented / changes | Medium | Map APIs via DevTools first (Phase 1 (Discovery)), build resilient error handling |
+| HR policy data too messy for RAG | Medium | Phase 1 (Discovery) policy cleanup, manual curation before ingestion |
+| Dependency diamond (Mastra + CopilotKit release sync) | Low | Pin both versions, upgrade only when tested together |
+| PDPD compliance for medical docs | Medium | Consent popup, PII redaction, audit trail. Image upload is optional. Full PDPD review before Phase 2. See Decisions Log section (Decision 3) |
+| AI submits wrong leave request | Medium | Human-in-the-loop confirmation, balance re-fetch before submit, audit log for rollback |
+| **Mastra workflow + CopilotKit suspend/resume untested** | **High** | **This exact integration pattern (Mastra suspend → CopilotKit card → resume) is not documented by either framework. MUST prototype in Week 1 before building on top. Fallback: implement confirmation via chat text (Yes/No) instead of UI card** |
+| CopilotKit `onError` API unverified | Medium | Verify CopilotKit exposes HTTP status in error callbacks during Phase 1 (Discovery). Fallback: custom fetch wrapper around CopilotKit's runtime URL |
+| JWT shared signing secret (symmetric) | Medium | Phase 1: accept risk (internal tool, ~200 users). Phase 2: migrate to RS256 asymmetric (Mastra holds public key only). See [Security](#security) section |
 
 ---
 
@@ -614,19 +537,35 @@ If all 3 are confirmed → no remaining blockers. All other risks have documente
 
 ---
 
-## Research Summary
+## Open Questions
 
-**Market Context**
-- Commercial HR AI assistants charge $2-8/employee/month (Leena AI, Moveworks, Espressive Barista)
-- Industry reports 70-80% query deflection and 40-60% employee adoption in year one
-- Most successful implementations start with 3-5 high-volume use cases (leave balance is #1)
-- Custom build for 200 employees is significantly cheaper than any SaaS option
+**Resolved:**
+- [x] ~~Do we have access to modify Employee App frontend code?~~ **Yes.** Option A — embed CopilotKit directly into Employee App React source. Widget shares auth context.
+- [x] ~~Milestone 2 auth design?~~ **Service account with user context** — see Decisions Log (Decision 5).
 
-**Technical Context**
-- Mastra v1.3.20: TypeScript-first, 22K+ GitHub stars, YC-backed, but no NestJS support and weekly breaking changes in alpha
-- CopilotKit v1.54.1: Official Mastra integration, AG-UI protocol (adopted by AWS), React embeddable
-- Claude Vision: 90-95% accuracy on Vietnamese printed text, 60-80% on handwritten; < $5/month for 300 requests
-- API costs: Claude Haiku ~$30-50/month, total budget ~$50-100/month for 200 employees
+**To resolve during Phase 1 (Discovery) — requires browser DevTools:**
+- [ ] What are the exact Employee App API endpoints? (REST or GraphQL?)
+- [ ] What authentication mechanism does the Employee App use (JWT, session cookies, OAuth)?
+- [ ] Where is the token stored? (localStorage, sessionStorage, HttpOnly cookie?)
+- [ ] What JWT claims exist? (Does it contain `userId`, `role`, `sub`?)
+- [ ] Is JWT symmetric (HMAC-SHA256) or asymmetric (RS256)?
+- [ ] Does the Employee App have a token refresh mechanism?
+- [ ] Does NestJS enforce CSRF on POST endpoints? If yes, how?
+- [ ] What frontend state management is used? (Context API, Redux, Zustand, Jotai?)
+- [ ] What build system? (Webpack, Vite, Next.js?)
+- [ ] What router? (React Router, Next.js App Router, Tanstack Router?)
+- [ ] Is there an existing reverse proxy (nginx, Apache, Caddy, CloudFlare)?
+- [ ] Is Docker available on the deployment server?
+- [ ] Are ports 3001, 5432, 6379 available?
+- [ ] Is the Employee App database PostgreSQL or MySQL?
+- [ ] Is SSL/TLS already configured for employee.openwt.vn?
+
+**To resolve during implementation:**
+- [ ] Is the HR policy data on employee.openwt.vn/wiki clean enough for RAG ingestion?
+- [ ] Can CopilotKit widget embed into the existing Employee App React frontend without conflicts?
+- [ ] Where to store uploaded images (local disk, S3-compatible, or PostgreSQL bytea)? What retention policy?
+
+---
 
 ## Related Documents
 
@@ -640,5 +579,87 @@ If all 3 are confirmed → no remaining blockers. All other risks have documente
 
 ---
 
-*Generated: 2026-04-06 | Updated: 2026-04-07*
+## Appendix: Phase 1 Discovery Decision Matrix
+
+Every integration point has multiple possible scenarios. Phase 1 (Discovery) must identify which scenario is real, then follow the corresponding solution path. See [research-report.md](research-report.md) §7.1 for implementation code per scenario.
+
+### Auth Mechanism
+
+| Scenario | CopilotKit Integration | Mastra Validation | Effort Impact |
+|----------|----------------------|-------------------|---------------|
+| **A: JWT in localStorage** (most likely) | `headers: { Authorization: \`Bearer \${localStorage.getItem('token')}\` }` | Verify JWT signature, extract claims | Baseline (0 extra days) |
+| **B: JWT in sessionStorage** | Same as A, but `sessionStorage.getItem('token')` | Same as A | Baseline |
+| **C: JWT in HttpOnly cookie** | Widget CANNOT read token via JS. Solution: CopilotKit sends requests with `credentials: 'include'` → cookie sent automatically. Mastra reads from cookie header, not Authorization | Mastra extracts JWT from `Cookie` header instead of `Authorization` | +0.5 days |
+| **D: Session cookie (no JWT)** | `credentials: 'include'` sends session cookie. No Bearer token | Mastra forwards session cookie to Employee App API. Cannot validate locally — must call Employee App `/api/me` to get userId | +1-2 days (need session proxy pattern) |
+| **E: OAuth2 tokens** | Use OAuth token from Employee App's auth provider. `headers: { Authorization: \`Bearer \${oauthToken}\` }` | Validate with OAuth provider's JWKS endpoint, or introspect token | +1 day |
+
+**Fallback if auth mechanism is unexpected:** Add a `/copilot/auth-probe` endpoint in Mastra that accepts any request from the widget and inspects what auth artifacts arrive (headers, cookies). Run this first to discover the mechanism.
+
+### JWT Claims
+
+| Scenario | Impact | Solution |
+|----------|--------|----------|
+| **JWT has `sub` (userId) + `role`** | Ideal — direct extraction | `const { sub, role } = verify(token, secret)` |
+| **JWT has `userId` but no `role`** | RBAC won't work from JWT alone | Call Employee App `/api/me` to get role, cache for session duration |
+| **JWT has neither** | Cannot identify user from token | Call Employee App `/api/me` on every request (expensive) or extract from token's custom claims |
+| **JWT uses non-standard claim names** | Code breaks silently | Make claim names configurable: `JWT_USER_CLAIM=sub`, `JWT_ROLE_CLAIM=role` in .env |
+
+### JWT Signing
+
+| Scenario | Mastra Config | .env |
+|----------|--------------|------|
+| **HMAC-SHA256 (symmetric)** | `verify(token, JWT_SECRET)` | `JWT_SECRET=<shared-secret>` |
+| **RS256 (asymmetric)** | `verify(token, publicKey, { algorithms: ['RS256'] })` | `JWT_PUBLIC_KEY_PATH=/certs/public.pem` |
+| **Unknown** | Try RS256 first (safer), fallback to HMAC | Provide both options in .env |
+
+### API Format
+
+| Scenario | Tool Implementation | Effort Impact |
+|----------|-------------------|---------------|
+| **REST (expected)** | `fetch(url, { method, headers, body })` as documented | Baseline |
+| **GraphQL** | Replace all tools with GraphQL queries: `fetch(url, { body: JSON.stringify({ query, variables }) })` | +2-3 days (rewrite all 7 tools) |
+| **Mixed (REST + GraphQL)** | Some tools use REST, some use GraphQL | +1-2 days |
+
+**Detection:** In Phase 1 (Discovery) DevTools audit, check Network tab. If requests go to a single `/graphql` endpoint with POST body, it's GraphQL. If multiple `/api/*` endpoints with different HTTP methods, it's REST.
+
+### CSRF
+
+| Scenario | Mastra Behavior | Implementation |
+|----------|----------------|----------------|
+| **No CSRF (Bearer exempt)** | Send `Authorization: Bearer` header, no CSRF needed | Baseline |
+| **CSRF required on all POST** | Mastra must fetch CSRF token before each write operation | GET `/api/csrf-token` → include `X-CSRF-Token` header on POST |
+| **CSRF via double-submit cookie** | Mastra reads CSRF cookie, sends as header | `const csrf = cookieJar.get('XSRF-TOKEN'); headers['X-XSRF-TOKEN'] = csrf` |
+| **CSRF not applicable (cookie-less)** | If auth is Bearer-only with no cookies, CSRF is irrelevant | No action needed |
+
+### Frontend Integration
+
+| Scenario | CopilotKit Mount Point | Considerations |
+|----------|----------------------|----------------|
+| **React + Context API auth** | Wrap `<CopilotKit>` inside existing `<AuthProvider>`, call `useAuth().getToken()` | Simplest path |
+| **React + Redux auth** | Import store, call `store.getState().auth.token` in CopilotKit headers callback | Must not trigger re-renders |
+| **React + Zustand auth** | `useAuthStore.getState().token` (non-reactive access for headers) | Works outside React components |
+| **Next.js App Router** | Mount in root `layout.tsx`, use `useSession()` from next-auth if applicable | Verify CopilotKit SSR compatibility |
+| **React Router (SPA)** | Mount in `App.tsx` root, widget persists across routes | Standard approach (documented) |
+
+### Reverse Proxy / Deployment
+
+| Scenario | Solution | Effort Impact |
+|----------|---------|---------------|
+| **No existing reverse proxy** | Add nginx to Docker Compose (as documented) | Baseline |
+| **Already has nginx** | Add `/copilot/` location block to existing nginx config | Less effort, but need config access |
+| **Behind CloudFlare / CDN** | Configure CloudFlare to route `/copilot/*` to Mastra origin | Need CloudFlare admin access |
+| **Behind Apache** | `ProxyPass /copilot/ http://localhost:3001/` in Apache config | Different syntax, same concept |
+| **No reverse proxy + no Docker** | Run Mastra directly on host, use CORS headers for cross-origin | +1 day (CORS config needed) |
+
+### Database
+
+| Scenario | Impact | Solution |
+|----------|--------|---------|
+| **PostgreSQL available** | Ideal — use pgvector for RAG embeddings | Baseline |
+| **Only MySQL available** | pgvector unavailable | Use separate SQLite + vector extension for embeddings, or Pinecone/Qdrant cloud |
+| **Shared PostgreSQL (no separate DB allowed)** | Must use existing DB | Create `copilot_` prefixed tables in existing DB, request schema access |
+
+---
+
+*Generated: 2026-04-06 | Updated: 2026-04-08*
 *Status: DRAFT - needs validation*
