@@ -987,6 +987,21 @@ When an agent chains multiple tools (e.g., check balance then check holidays the
 3. **Rollback awareness:** For chains with side effects, track which steps completed. If step 3 (submit) fails after step 1-2 succeeded, ensure no partial state was committed. Use idempotent operations where possible.
 4. **Circuit breaker:** If the same tool fails repeatedly across multiple users, temporarily disable it and serve a cached or template response rather than retrying indefinitely.
 
+### Agent Development Anti-Patterns (Harness Engineering)
+
+When using AI agents for software development (e.g., AI coding assistants building features), four common failure patterns emerge. These are environment failures, not model failures — the model is capable, but the working environment causes it to fail.
+
+| Pattern | Description | Cause | Prevention |
+|---------|-------------|-------|------------|
+| **One-Shot Syndrome** | Agent tries to complete an entire complex task in a single session — context window fills up, quality degrades | No mechanism to break work into incremental steps | Break features into small tasks. One task per session. Use a task list with explicit ordering |
+| **Premature Victory** | Agent declares "done" before the feature actually works end-to-end | No verification gates — agent self-assesses completion | Layered verification pipeline: lint → type-check → unit tests → build → E2E. Agent cannot mark "done" without evidence |
+| **Context Drift** | Over multiple sessions, agent makes decisions that contradict earlier architectural choices | No persistent state across sessions. Agent starts each session with no memory of previous decisions | Maintain state files: progress log, decision log, feature list. Each session starts by reading previous state |
+| **Scope Creep** | Agent "improves" code outside the requested task, causing unintended regressions | No scope boundaries. Agent sees opportunity and acts on it | Explicit scope: "work on Task #X only." Definition of Done per task. Log improvement ideas, don't implement them |
+
+**Key insight from Anthropic research (2025):** With proper environment design (harness), task completion rate jumps from ~20% to ~85%. The improvement is qualitative, not marginal. Most agent failures in practice are environment failures, not skill failures.
+
+Reference: Harness Engineering — a discipline focused on designing the environment, constraints, and feedback loops around AI models to produce reliable engineering output.
+
 ---
 
 ## 13. Multi-Agent Orchestration

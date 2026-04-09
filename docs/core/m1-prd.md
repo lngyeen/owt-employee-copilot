@@ -277,6 +277,16 @@ Employee: "Quy định về nghỉ phép khi có người nhà mất?"
 ```
 After 3 failed RAG attempts, agent provides specific HR contact info (not generic "contact HR"). This is the escalation path — no `escalateToHR()` tool needed, just system prompt instruction with concrete contact details.
 
+### Scope Control
+
+- **One feature at a time:** Each coding session focuses on exactly one task from the build plan. No scope creep — if a developer notices an improvement opportunity outside the current task, they log it as a note, not implement it.
+- **Definition of Done per task:** A task is not "done" until:
+  1. Code written
+  2. `verify.sh` passes all layers (lint → type-check → unit → build)
+  3. Manual smoke test confirms the feature works
+  4. Commit pushed with descriptive message
+- **Why:** AI coding agents (and humans) tend to drift scope when given broad instructions. Constraining to one feature per session prevents the "one-shot syndrome" (trying to build everything at once) and "scope creep" (fixing unrelated things).
+
 ---
 
 ## Edge Cases
@@ -458,6 +468,14 @@ These are the only items that can completely block the project. No technical fal
 - [ ] **Server/machine to run Docker Compose** — any Linux/Mac on OpenWT network with Docker installed
 
 If all 3 are confirmed → no remaining blockers. All other risks have documented fallbacks.
+
+### Developer Onboarding (AGENTS.md)
+
+- When starting Phase 3 (MVP Build), create an `AGENTS.md` file at the repo root.
+- This file is the first thing any developer or AI coding agent reads before starting work.
+- **Contents:** project overview, tech stack summary, coding conventions, file structure, available tools (scripts, verify commands), and what NOT to do.
+- **Purpose:** Eliminates "context drift" — where decisions made in early sessions are forgotten or contradicted in later sessions. Every session starts from the same shared context.
+- The repo becomes a "system of record" — all knowledge needed to continue work is embedded in the repository itself, not in someone's memory or a chat history.
 
 ---
 

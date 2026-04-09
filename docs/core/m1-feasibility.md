@@ -184,6 +184,41 @@ Future milestones can add additional notification channels and features. See [pr
 
 **Note:** Tasks 1a, 1b, 2a, 8a, 8b, 9a, 10a are newly identified infrastructure/integration tasks that were implicit in the original 11-task list. MVP scope is 6 core features. Estimate: **2-3 weeks** for a solo developer.
 
+### Session Management
+
+Each coding session should follow this lifecycle:
+
+1. **Start:** Read `claude-progress.md` for previous session state. Check `git log` for last commit. Identify the next task from the task table above.
+2. **Execute:** Work on exactly one task. Run `verify.sh` after each meaningful change. Do not move to the next task until the current one passes all verification layers.
+3. **End:** Commit with a descriptive message following conventional commits. Update `claude-progress.md` with: what was done, what is next, and any blockers. Leave the codebase in a clean, buildable, resumable state.
+
+When starting **Phase 3**, create an `AGENTS.md` file at the repo root containing:
+
+- **Project context** — what the Vacation Co-Pilot is and how it fits with the Employee App.
+- **Coding conventions** — TypeScript style, immutability, file size limits, naming.
+- **Available tools** — Mastra tools, CopilotKit, Docker Compose commands, `verify.sh`.
+- **What not to do** — no direct DB mutations from agents, no hardcoded secrets, no skipping verification.
+- **How to verify work** — run `verify.sh`, check CI, confirm E2E smoke test passes.
+
+### Feature Tracking
+
+Track feature implementation status in `feature_list.json` at the repo root:
+
+```json
+{
+  "features": [
+    { "id": 1, "name": "Mastra + Docker setup", "status": "pending", "assignee": null },
+    { "id": 2, "name": "CopilotKit widget + JWT", "status": "pending", "assignee": null },
+    { "id": 3, "name": "Vacation balance lookup", "status": "pending", "assignee": null },
+    { "id": 4, "name": "Leave history query", "status": "pending", "assignee": null },
+    { "id": 5, "name": "Submit leave + HITL confirm", "status": "pending", "assignee": null },
+    { "id": 6, "name": "Vision AI + PII redaction", "status": "pending", "assignee": null }
+  ]
+}
+```
+
+Update status (`pending` → `in_progress` → `done`) as each task completes. This enables session continuity — any agent or developer can pick up where the last left off without re-reading the entire codebase.
+
 ### Testing Strategy (Task #10 Detail)
 
 | Test Type | What | Framework | Coverage Target |
@@ -197,6 +232,32 @@ Future milestones can add additional notification channels and features. See [pr
 **Test dataset:** 20-30 curated Q&A pairs for RAG (Vietnamese + English), 5 leave submission scenarios, 3 Vision AI test images (clear, blurry, non-medical). See [research-report.md](research-report.md) Section 10 for eval framework.
 
 **CI trigger:** Tests run on every push to `main`. RAG evals run nightly (slower, cost-sensitive).
+
+### Verification Pipeline
+
+When implementing, use layered verification gates — an agent cannot claim "done" without passing all layers:
+
+```
+lint/format → type-check → unit tests → build → smoke test → E2E
+```
+
+Create a `verify.sh` script at the repo root that runs all layers sequentially:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "=== Lint & Format ===" && pnpm lint && pnpm format --check
+echo "=== Type Check ===" && pnpm tsc --noEmit
+echo "=== Unit Tests ===" && pnpm vitest run
+echo "=== Build ===" && pnpm build
+echo "=== Smoke Test ===" && pnpm test:smoke
+echo "=== E2E ===" && pnpm test:e2e
+
+echo "✓ All verification layers passed"
+```
+
+Only when all layers pass, mark the feature as complete in `feature_list.json`. This prevents **Premature Victory** — where the agent reports success but the feature does not actually work end-to-end. Every task in the build plan must pass `verify.sh` before its status moves to `done`.
 
 ---
 
