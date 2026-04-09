@@ -1476,40 +1476,7 @@ graph LR
     style RD fill:#fce4ec,stroke:#e91e63
 ```
 
-```yaml
-# docker-compose.yml
-services:
-  # ====== SERVICE 1: Employee App (EXISTING - untouched) ======
-  employee-app:
-    image: openwt/employee-app        # existing image
-    ports: ["3000:3000"]
-    networks: [internal]
-
-  # ====== SERVICE 2: Vacation Co-Pilot (NEW) ======
-  vacation-copilot:
-    build: ./vacation-copilot
-    ports: ["3001:3001"]
-    environment:
-      - ANTHROPIC_API_KEY=${SECRET}
-      - EMPLOYEE_APP_URL=http://employee-app:3000  # internal call
-      - DB_URL=postgres://copilot_db:5432/copilot
-      - REDIS_URL=redis://copilot_redis:6379
-    networks: [internal]
-    depends_on: [copilot_db, copilot_redis]
-
-  copilot_db:
-    image: postgres:16
-    volumes: ["./pgdata:/var/lib/postgresql/data"]
-    networks: [internal]
-
-  copilot_redis:
-    image: redis:alpine
-    networks: [internal]
-
-networks:
-  internal:
-    driver: bridge    # 2 services communicate via internal network
-```
+> **Docker Compose:** See Section 7 for the full production-ready `docker-compose.yml` with health checks, init scripts, and environment config.
 
 ### Tool Definitions
 

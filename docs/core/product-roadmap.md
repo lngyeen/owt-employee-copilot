@@ -1,29 +1,17 @@
 # OpenWT Employee Co-Pilot — Product Roadmap
 
-*Last updated: 2026-04-07*
+| | |
+|---|---|
+| **Version** | 1.0 |
+| **Updated** | 2026-04-09 |
+| **Status** | Planning complete |
+| **Features** | 18 across 4 milestones |
 
 ## Vision
 
 Transform OpenWT's Employee App from a passive portal into an **AI-native workspace** where employees manage leave, devices, training, and company knowledge through a single conversational interface — reducing clicks, eliminating repetitive HR questions, and enabling proactive assistance.
 
-## Architecture Principle
-
-The Mastra + CopilotKit infrastructure built in Milestone 1 is **reusable for all subsequent milestones**. Each new feature follows the same pattern:
-
-1. Add new **Tool(s)** to the agent (API integrations)
-2. Expand **RAG knowledge base** (if policy/doc Q&A is needed)
-3. Add **Mastra workflow** (if write operations or multi-step flows)
-
-Same brain, more arms. No re-architecture needed between milestones.
-
-## Related Documents
-
-| Document | Purpose |
-|----------|---------|
-| [m1-prd.md](m1-prd.md) | Product Requirements for Milestone 1 (MVP) |
-| [research-report.md](research-report.md) | Technical research (10 sections) |
-| [m1-prd.md — Decisions Log](m1-prd.md#decisions-log) | 5 key tech decisions with rationale |
-| [m1-feasibility.md](m1-feasibility.md) | Phase 1 feasibility, build order, cost estimate |
+**Expansion principle:** The Mastra + CopilotKit infrastructure built in Milestone 1 is reusable for all subsequent milestones. Each new feature = add tools + expand RAG. No re-architecture needed.
 
 ---
 
@@ -167,60 +155,7 @@ Establishes core AI infrastructure: Mastra + Hono backend, CopilotKit widget, Cl
 
 ---
 
-## 4. UX Design Principles
-
-### Chat Fitness Ratings
-
-| Rating | Meaning | Best Interface |
-|--------|---------|---------------|
-| **Chat** | Faster than clicking through pages | Pure chat response |
-| **Hybrid** | Chat initiates, UI completes. AI pre-fills, user confirms | Chat + Agentic UI |
-| **UI-first** | Traditional UI is better. Chat adds marginal value | Dashboard/table with optional chat entry |
-| **No-go** | Security risk or UX disaster in chat | Traditional UI with MFA |
-
-### AI Limitations
-
-| Limitation | Rule |
-|------------|------|
-| **Cognitive Load** | If visual selection > verbal description → Hybrid |
-| **Data Density** | If results > 5 items → card/table outside chat or link to page |
-| **High-Stakes** | Financial, delete, admin actions → No-go for chat-only |
-| **Strict Validation** | Never let AI calculate — AI calls deterministic code, displays result |
-
-### Hybrid Strategy
-
-```mermaid
-graph LR
-    subgraph Chat["CHAT does"]
-        C1["Quick lookups (balance)"]
-        C2["Policy Q&A"]
-        C3["Collect info (dates, type)"]
-        C4["Extract from images"]
-        C5["Recommend (top 3-5)"]
-        C6["Nudge & remind"]
-        C7["Route to right page"]
-    end
-
-    subgraph UI["UI does"]
-        U1["Complex forms (final submit)"]
-        U2["Data tables (50+ rows)"]
-        U3["Calendar visual selection"]
-        U4["Preview & confirm extracted data"]
-        U5["Browse full catalogs"]
-        U6["Dashboards & charts"]
-        U7["MFA & sensitive operations"]
-    end
-
-    Chat -->|"Golden Rule:<br/>AI does the hard work<br/>(input, search, extract)"| UI
-    UI -->|"Human does the satisfying work<br/>(verify, confirm, decide)"| Chat
-
-    style Chat fill:#e3f2fd,stroke:#2196f3
-    style UI fill:#fff3e0,stroke:#ff9800
-```
-
----
-
-## 5. Module Coverage
+## 4. Module Coverage
 
 | Module | Milestone 1 (MVP) | Milestone 2 | Milestone 3 | Milestone 4 |
 |--------|-------------|--------|--------|--------|
@@ -234,3 +169,14 @@ graph LR
 | **Tasks** | — | — | Task Manager (write) | — |
 | **Company Regs** | HR Policy Q&A | All Regulations | — | Semantic Search |
 | **External** | — | Slack Bot | — | — |
+
+---
+
+## Related Documents
+
+| Document | Purpose |
+|----------|---------|
+| [m1-prd.md](m1-prd.md) | Milestone 1 PRD (MVP scope, user flows, edge cases, decisions) |
+| [m1-feasibility.md](m1-feasibility.md) | Milestone 1 feasibility, build order, cost estimate |
+| [research-report.md](research-report.md) | Technical research (implementation details) |
+| [ai-agent-fundamentals.md](ai-agent-fundamentals.md) | AI agent concepts reference |
